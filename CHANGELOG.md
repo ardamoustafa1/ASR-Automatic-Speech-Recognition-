@@ -24,4 +24,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Addressed JWT hardcoded secret vulnerability and replaced plain-text user passwords with bcrypt hashing.
 - Fixed `DetachedInstanceError` related to `SessionLocal` context management.
-\n- **feat(core): initialize batched inference pipeline for higher throughput**: Implement faster-whisper batched inference to support high-volume concurrent requests.\n- **perf(engine): optimize MLX greedy decoder phonetic tokenization**: Enhance MLX token selection to reduce phonetically similar word errors in Turkish.
+\n- **feat(core): initialize batched inference pipeline for higher throughput**: Implement faster-whisper batched inference to support high-volume concurrent requests.\n- **perf(engine): optimize MLX greedy decoder phonetic tokenization**: Enhance MLX token selection to reduce phonetically similar word errors in Turkish.\n- **fix(ui): resolve state mismatch in real-time transcription dashboard**: Fix a race condition in Streamlit UI where partial transcripts would overwrite finalized ones.
