@@ -59,7 +59,9 @@ def generate_crm_summary(full_text: str, classifier: Any = None) -> CallSummary:
     # Her zaman SentimentClassifier (Zero-Shot) kullanacağız, yanlışlıkla UI'dan toksisite modeli gelmiş olabilir.
     executive_summary = _extract_executive_summary(full_text)
     
-    if SentimentClassifier:
+    if classifier:
+        zero_shot_classifier = classifier
+    elif SentimentClassifier:
         zero_shot_classifier = SentimentClassifier.get_instance()
     else:
         zero_shot_classifier = None

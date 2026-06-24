@@ -21,7 +21,7 @@ def test_post_analyze_conversation(client: TestClient):
             {"start": 2.0, "end": 4.0, "text": "Çok şikayetçiyim."}
         ],
         "sector": "telecom",
-        "asr_confidence": 95.5,
+        "asr_confidence": 0.955,
         "quality_gate_passed": True
     }
     response = client.post("/api/v1/conversations/analyze", json=payload, headers={"Authorization": f"Bearer {token}"})

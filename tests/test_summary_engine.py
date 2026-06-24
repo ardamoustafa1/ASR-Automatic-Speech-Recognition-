@@ -32,7 +32,9 @@ def test_generate_crm_summary_empty():
     assert res.intent == "Belirsiz"
     assert res.executive_summary == "Yetersiz konuşma verisi."
 
-def test_generate_crm_summary_no_classifier():
+@patch('asr_pro.core.summary_engine.SentimentClassifier')
+def test_generate_crm_summary_no_classifier(mock_sentiment_classifier):
+    mock_sentiment_classifier.get_instance.return_value = None
     text = "Faturamda yanlışlık var. Hemen düzelttik."
     summary = generate_crm_summary(text, classifier=None)
     assert summary.intent == "Bilinmiyor"
