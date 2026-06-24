@@ -17,11 +17,11 @@ class KeywordRuleCreate(BaseModel):
 class KeywordRuleUpdate(BaseModel):
     name: Optional[str] = None
     keywords: Optional[list[str]] = None
-    match_mode: Literal["exact", "fuzzy", "regex", Optional["semantic"]] = None
+    match_mode: Optional[Literal["exact", "fuzzy", "regex", "semantic"]] = None
     fuzzy_threshold: Optional[float] = None
     case_sensitive: Optional[bool] = None
     sector_scope: Optional[list[str]] = None
-    severity: Literal["info", "warning", Optional["critical"]] = None
+    severity: Optional[Literal["info", "warning", "critical"]] = None
     topic_id: Optional[str] = None
     is_active: Optional[bool] = None
 
