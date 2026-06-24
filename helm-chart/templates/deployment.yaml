@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "asr-pro.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "asr-pro.name" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "asr-pro.name" . }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "asr-pro.name" . }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: DATABASE_URL
+              value: {{ .Values.env.databaseUrl }}
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: asr-pro-secrets
+                  key: jwt-secret
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

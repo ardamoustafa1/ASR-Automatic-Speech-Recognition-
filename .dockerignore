@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+temp_audio_uploads/
+batch_audio_files/
+data/
+.DS_Store
+.github/
+tests/
+dev-scripts/
+node_modules/
+dist/
+*.exe
+*.wav
+*.mp3

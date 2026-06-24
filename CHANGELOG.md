@@ -1,0 +1,26 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.0.0] - 2026-06-23
+
+### Added
+- React/Zustand based modern frontend dashboard.
+- Extensive REST and WebSocket API documentation.
+- Enterprise-grade sentiment and churn risk AI engines.
+- Role-based access control (RBAC) on keywords and alerts.
+- Thread-safe model loading mechanism for AI endpoints.
+- Secure WebSocket endpoint for live ASR streams.
+- MIT License.
+
+### Changed
+- Migrated legacy scripts to a structured FastAPI and Streamlit hybrid architecture.
+- Optimized Docker builds with multi-stage configuration and `.dockerignore`.
+- Enhanced test coverage using `pytest-cov`, with conditional skipping for ML-heavy operations.
+
+### Fixed
+- Addressed JWT hardcoded secret vulnerability and replaced plain-text user passwords with bcrypt hashing.
+- Fixed `DetachedInstanceError` related to `SessionLocal` context management.

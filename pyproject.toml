@@ -1,0 +1,104 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asr_pro"
+version = "1.0.0"
+description = "ASR-Pro — Enterprise Speech Intelligence Platform for Contact Centers"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    { name = "Arda Moustafa", email = "arda@asr-pro.io" }
+]
+license = { text = "MIT" }
+keywords = [
+    "asr", "speech-recognition", "turkish", "nlp", "call-center",
+    "sentiment-analysis", "churn-prediction", "whisper", "contact-center-ai",
+    "enterprise", "real-time", "compliance"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Customer Service",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+
+[project.urls]
+Homepage = "https://github.com/ardamoustafa/ASR-Pro"
+Documentation = "https://github.com/ardamoustafa/ASR-Pro/tree/main/docs"
+Repository = "https://github.com/ardamoustafa/ASR-Pro.git"
+"Bug Tracker" = "https://github.com/ardamoustafa/ASR-Pro/issues"
+Changelog = "https://github.com/ardamoustafa/ASR-Pro/blob/main/CHANGELOG.md"
+
+# ─── Pytest ──────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --import-mode=importlib"
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+
+# ─── Coverage ─────────────────────────────────────────────────────────────────
+[tool.coverage.run]
+source = ["asr_pro"]
+omit = ["*/tests/*", "*/__pycache__/*", "*/migrations/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "@overload",
+]
+
+# ─── Ruff (Linter + Formatter) ────────────────────────────────────────────────
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+exclude = [
+    ".venv", "venv", "__pycache__", "dist", "build",
+    "node_modules", ".git", "alembic/versions",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "S",   # flake8-bandit (security)
+    "N",   # pep8-naming
+]
+ignore = [
+    "S101",  # Use of assert (OK in tests)
+    "S603",  # subprocess calls (needed for ffmpeg)
+    "B008",  # Depends() in function defaults (FastAPI pattern)
+    "N806",  # Variable in function should be lowercase (ML convention)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "E501"]
+
+# ─── isort ───────────────────────────────────────────────────────────────────
+[tool.isort]
+profile = "black"
+line_length = 100
+
+# ─── mypy ────────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+strict = false
+warn_return_any = true
+warn_unused_configs = true

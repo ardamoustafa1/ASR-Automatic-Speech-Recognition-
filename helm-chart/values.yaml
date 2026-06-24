@@ -1,0 +1,22 @@
+replicaCount: 2
+
+image:
+  repository: ardamoustafa/asr-pro-backend
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+service:
+  type: ClusterIP
+  port: 8000
+
+env:
+  databaseUrl: "postgresql://user:password@asr-db:5432/asr_pro"
+  jwtSecretKey: "change_this_in_production_secret"
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 2000m
+    memory: 4Gi

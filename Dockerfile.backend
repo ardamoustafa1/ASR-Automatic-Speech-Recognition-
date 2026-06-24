@@ -1,0 +1,36 @@
+# Stage 1: Builder
+FROM python:3.11-slim AS builder
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY requirements.txt .
+
+# Install dependencies into a virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Stage 2: Runtime
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy the virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY asr_pro/ asr_pro/
+COPY ASR/ ASR/
+
+# EXPOSE only the API port, Streamlit container will expose 8501 separately
+EXPOSE 8000
+
+CMD ["uvicorn", "asr_pro.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,105 @@
+60:def get_torch():
+67:def get_matplotlib():
+74:def get_wordcloud():
+81:def get_pipeline():
+91:def get_whisper_model_class():
+98:def get_batched_pipeline_class():
+105:def get_ctranslate2():
+402:def get_ffmpeg_path():
+418:def resolve_model_name(model_size: str) -> str:
+421:def choose_device_and_compute():
+438:def wants_apple_mlx_engine(engine_type: str = ""):
+443:def is_apple_silicon_host():
+448:def is_mlx_model(model):
+452:def describe_runtime_engine(engine_type: str = ""):
+458:def resolve_mlx_repo_name(actual_model: str) -> str:
+536:def load_whisper_model(model_size: str, engine_type: str = "Windows"):
+564:def load_toxicity_classifier():
+586:def format_timestamp(seconds: float) -> str:
+589:def create_srt(segments):
+599:def create_wordcloud(text):
+611:def diarize_audio(file_path, hf_token):
+643:def clamp(value, minimum=0.0, maximum=1.0):
+646:def get_audio_duration_seconds(file_path: str):
+657:def analyze_prepared_audio_quality(file_path: str):
+764:def build_prepared_audio_path(file_path: str, variant: str = AUDIO_PREP_STANDARD) -> Path:
+776:def prepare_audio_for_asr(file_path: str, variant: str = AUDIO_PREP_STANDARD):
+843:def normalize_for_wer(text: str):
+849:def levenshtein_distance(reference_words, hypothesis_words):
+868:def calculate_word_accuracy(reference_text: str, hypothesis_text: str):
+1103:def combine_patterns(*pattern_groups):
+1109:def combine_terms(*term_groups):
+1172:def preserve_first_char_case(original: str, replacement: str):
+1177:def apply_case_preserving_regex(text: str, pattern: str, replacement: str):
+1182:def fuzzy_ratio(left: str, right: str):
+1185:def parse_custom_terms(custom_terms: str):
+1201:def get_domain_profile(domain_key: str):
+1204:def build_domain_hotwords(domain_key: str, custom_terms: str = ""):
+1227:def correct_domain_tokens(text: str, domain_profile: DomainProfile, custom_terms=None):
+1251:def tidy_transcript_text(text: str):
+1259:def apply_domain_corrections(text: str, domain_key: str = "omni", custom_terms: str = ""):
+1268:def apply_banking_domain_corrections(text: str):
+1271:def postprocess_transcript_text(text: str, profile_key: str, domain_key: str = "omni", custom_terms: str = ""):
+1277:def domain_correction_count(raw_text: str, corrected_text: str):
+1282:def build_initial_prompt(hotwords: str = ""):
+1294:def build_transcribe_options(profile: ASRProfile, lang: str, task: str, hotwords: str = ""):
+1328:def is_whisper_context_error(error: Exception):
+1332:def build_safe_transcribe_options(options: dict):
+1348:def materialize_transcription(engine, prepared_path: str, options: dict):
+1352:def transcribe_segments_with_rescue(model, prepared_path: str, profile: ASRProfile, options: dict):
+1381:def repeated_ngram_ratio(words, n=3):
+1389:def is_suspicious_asr_segment(segment, text: str):
+1421:def segment_duration(segment):
+1424:def overlap_seconds(first_segment, second_segment):
+1431:def filtered_segment_record(segment, reason: str):
+1440:def should_drop_previous_for_overlap(previous_segment, current_segment):
+1448:def should_drop_current_for_overlap(previous_segment, current_segment):
+1456:def iter_stable_segments(segments, filtered_segments):
+1507:def normalize_swear_match_token(value: str):
+1514:def build_swear_match_sets(swear_list):
+1529:def is_safe_swear_substring_hit(word: str):
+1532:def detect_swears_in_segment(text: str, start_time: float, swear_list):
+1568:def summarize_transcription_quality(segments_data):
+1607:def transcribe_with_profile(
+1728:def should_retry_transcription(candidate, source_profile: ASRProfile):
+1740:def retry_has_latency_budget(model, overall_started: float, target_latency_s: int, primary_candidate):
+1756:def pick_best_transcription_candidate(candidates):
+1759:def build_formatted_transcript(best_candidate, run_metrics, retry_candidates, target_latency_s):
+1792:def apply_sota_features(candidate, model, domain_key, combined_hotwords, lang, swear_list):
+1832:def transcribe_audio_file(
+1938:def consensus_transcribe(
+2075:def auto_select_profile(audio_quality_score: float) -> str:
+2087:def extract_audio_segment_ffmpeg(source_path: str, start_s: float, end_s: float, output_path: str):
+2106:def redecode_low_confidence_segments(
+2216:def restore_turkish_punctuation(text: str) -> str:
+2262:def analyze_toxicity(text: str, classifier):
+2298:def display_detection_results(detected_swears, col_display):
+2316:def get_font_path():
+2325:def replace_turkish_chars(text):
+2340:def pdf_safe_text(text, allow_unicode=True):
+2350:def pdf_output_bytes(pdf):
+2357:def create_pdf_report(filename, text_content, detected_swears, toxicity_info):
+2418:def metric_tone(label, value):
+2442:def render_quality_metric_cards(items):
+2459:def render_metric_summary(run_metrics, target_latency_s):
+2509:def render_wer_summary(reference_text, full_transcription):
+2526:def render_reference_gate_hint(reference_text):
+2530:def render_search_and_transcript(segments_data):
+2571:def render_download_buttons(uploaded_name, formatted_text, segments_data, detected_swears, toxicity_label, negative_score):
+2605:def build_reading_paragraphs(text: str, sentences_per_paragraph: int = 4):
+2620:def render_paragraph_html(text: str):
+2627:def render_raw_asr_dialog(raw_transcription: str):
+2649:def render_raw_asr_panel(raw_transcription: str, key_prefix: str = "raw_asr"):
+2676:def render_cached_analysis_result(result, reference_text, target_latency_s, enable_wordcloud):
+2701:def get_system_metrics():
+2708:def local_css():
+3260:def safe_html(value):
+3263:def render_sidebar_module_map(active_mode):
+3290:def render_command_header(mode, model_size, profile_key, domain_key, runtime_device):
+3346:def render_kpi_grid(cpu_percent, ram_usage, target_latency_s, runtime_device):
+3394:def render_panel(title, caption="", right_label=""):
+3406:def render_empty_state(title, subtitle):
+167:class ASRProfile:
+189:class TranscriptSegment:
+199:class DomainProfile:
+465:class MLXWhisperWrapper:

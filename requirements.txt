@@ -1,0 +1,55 @@
+# ─── ASR Core ───────────────────────────────────────────────────────────────
+streamlit>=1.35.0,<2.0
+faster-whisper>=1.0.1
+ctranslate2>=3.24.0
+mlx-whisper; platform_system == "Darwin" and platform_machine == "arm64"
+transformers>=4.40.0,<5.0
+torch>=2.2.0,<3.0.0
+pyannote.audio>=3.1.1
+
+# ─── Audio / Export ─────────────────────────────────────────────────────────
+fpdf>=1.7.2
+srt>=3.5.3
+wordcloud>=1.9.3
+psutil>=5.9.0
+matplotlib>=3.8.0
+imageio-ffmpeg>=0.4.9
+
+# ─── FastAPI & API Layer ─────────────────────────────────────────────────────
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9
+slowapi>=0.1.9
+fastapi-cache2>=0.2.1
+prometheus-fastapi-instrumentator>=6.1.0
+
+# ─── Database ────────────────────────────────────────────────────────────────
+sqlalchemy>=2.0.25
+alembic>=1.13.0
+psycopg2-binary>=2.9.9
+
+# ─── Caching ─────────────────────────────────────────────────────────────────
+redis>=5.0.0
+
+# ─── Auth & Security ─────────────────────────────────────────────────────────
+PyJWT>=2.8.0
+passlib[bcrypt]>=1.7.4
+bcrypt<4.1.0
+pydantic>=2.5.0
+pydantic-settings>=2.2.0
+
+# ─── Logging ─────────────────────────────────────────────────────────────────
+loguru>=0.7.2
+
+# ─── Testing ─────────────────────────────────────────────────────────────────
+pytest>=8.0.0
+pytest-cov>=4.1.0
+pytest-asyncio>=0.23.5
+httpx>=0.26.0
+
+# ─── Code Quality ────────────────────────────────────────────────────────────
+ruff>=0.4.0
+isort>=5.13.0
+mypy>=1.8.0
+bandit>=1.7.7
+pip-audit>=2.7.0

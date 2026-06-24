@@ -1,0 +1,373 @@
+# --- ASR YAPILANDIRMA ---
+from dataclasses import dataclass
+
+DEFAULT_MODEL_SIZE = "turbo"
+
+MODEL_NAME_MAP = {
+    "turbo": "large-v3-turbo",
+    "large": "large-v3",
+    "medium": "medium",
+    "small": "small", 
+    "base": "base",
+    "tiny": "tiny"
+}
+
+MODEL_INFO = {
+    "turbo": "Önerilen: yüksek doğruluk + düşük gecikme",
+    "large": "En yüksek doğruluk, daha yavaş",
+    "medium": "Dengeli",
+    "small": "Hızlı",
+    "base": "Çok hızlı",
+    "tiny": "Ultra hızlı"
+}
+LANGUAGE = "tr"
+TEMP_AUDIO_DIR = "temp_audio_uploads"
+BATCH_DIR = "batch_audio_files"
+TOXICITY_CLASSIFIER_MODEL = "savasy/bert-base-turkish-sentiment-cased" 
+TARGET_LATENCY_SECONDS = 20
+QUALITY_GATE_ACCURACY = 95.0
+QUALITY_GATE_WER = 5.0
+ASR_CONFIDENCE_RETRY_THRESHOLD = 92.0
+AUDIO_QUALITY_REVIEW_THRESHOLD = 70.0
+AUDIO_RESCUE_PREP_THRESHOLD = 78.0
+AUDIO_PREP_STANDARD = "standard"
+AUDIO_PREP_RESCUE = "rescue"
+ASR_MAX_NEW_TOKENS = 160
+ASR_SAFE_MAX_NEW_TOKENS = 96
+ASR_SAFE_FALLBACK_CHUNK_LENGTH = 15
+ASR_INITIAL_PROMPT_TERM_LIMIT = 18
+ASR_INITIAL_PROMPT_CHAR_LIMIT = 260
+ASR_RETRY_MIN_REMAINING_SECONDS = 4.0
+ASR_RETRY_ESTIMATE_MULTIPLIER = 0.9
+ASR_CONTEXT_ERROR_MARKERS = (
+    "No position encodings",
+    "positions >= 448",
+    "position 448",
+    "length of the prompt",
+    "max_new_tokens",
+    "max_length of the Whisper model",
+    "combined length",
+)
+AUDIO_PREP_FILTERS = {
+    AUDIO_PREP_STANDARD: (
+        "Standart Netleştirme",
+        "highpass=f=80,lowpass=f=7800,loudnorm=I=-18:TP=-2:LRA=11",
+    ),
+    AUDIO_PREP_RESCUE: (
+        "Kötü Ses Kurtarma",
+        "highpass=f=70,lowpass=f=7600,afftdn=nr=10:nf=-25,"
+        "speechnorm=e=12.5:r=0.0001:l=1,"
+        "dynaudnorm=f=150:g=15:p=0.95:m=8,"
+        "acompressor=threshold=-24dB:ratio=2.5:attack=5:release=80,"
+        "loudnorm=I=-18:TP=-2:LRA=8",
+    ),
+}
+
+AUDIO_PREP_APEX = "apex"
+AUDIO_PREP_FILTERS[AUDIO_PREP_APEX] = (
+    "Apex Ses Kurtarma (Neural)",
+    "highpass=f=60,lowpass=f=8000,"
+    "afftdn=nr=12:nf=-30:tn=1,"
+    "speechnorm=e=15:r=0.00005:l=1,"
+    "dynaudnorm=f=200:g=20:p=0.92:m=10,"
+    "acompressor=threshold=-20dB:ratio=3:attack=3:release=60,"
+    "loudnorm=I=-16:TP=-1.5:LRA=7",
+)
+
+# --- KÜFÜR VERİTABANI (KAPSAMLI) ---
+TURKISH_SWEAR_WORDS = [
+    "sik", "sikik", "siktir", "siktirgit", "sikerim", "sikcek", "sikeyim", "siksin", "sikim", 
+    "siktiret", "sikicem", "sikici", "sikilmiş", "sikme", "sikmek", "sikiş", "sikişmek",
+    "siksok", "sikko", "sike", "sikmiş", "sikecek", "sikerler", "sikilir", "sikilen",
+    "am", "amcık", "amcik", "amına", "amina", "amk", "amq", "aq", "amınakoyayım", "aminakoyim",
+    "amınakoyim", "amk", "amına koyayım", "amına koduğum", "amınakodum", "amınakodumun",
+    "amlı", "amcığa", "amcıklı", "amcuklu", "anasının amı", "ananın amı",
+    "orospu", "orospuçocuğu", "orospucocugu", "orosbuçocuğu", "oç", "oc", "oçlar",
+    "orospunun", "orospuya", "orosbucocugu", "orrrospuçocuğu", "orospuluk",
+    "piç", "pic", "piçkurusu", "pickurusu", "piçler", "piçlik",
+    "hassiktir", "haysiktir", "hasiktir", "hassktir", "hassssiktir", "hassiktirrr",
+    "yarak", "yarrak", "yarra", "yarrağı", "yarrağa", "yarrağım", "yarramı", "yarraklı",
+    "yarak kürek", "yarrak kafalı", "yarrakçı",
+    "taşak", "taşşak", "daşşak", "taşşağı", "taşaklı", "taşşaklı",
+    "göt", "got", "götüne", "gotune", "götü", "götten", "götlek", "götün", "götoş",
+    "götverenler", "götveren", "götünü", "götüm",
+    "meme", "memeli", "kıç", "kıçını",
+    "aptal", "salak", "gerizekalı", "gerizekali", "mal", "dangalak", "embesil", "ahmak",
+    "beyinsiz", "bunak", "mankafa", "kalın kafalı", "odun", "geri zekalı", "enai", "enayi",
+    "budala", "abdal", "alık", "andaval", "angut", "hıyar", "saloz", "salakmısın",
+    "aptalmısın", "malın teki", "kafasız", "akılsız", "şapşal", "şaşkın", "avanak",
+    "şerefsiz", "serefsiz", "haysiyetsiz", "namussuz", "ahlaksız", "ahlaksiz", "onursuz",
+    "karaktersiz", "rezil", "kepaze", "alçak", "aşağılık", "adi", "adice", "bayağı",
+    "pezevenk", "gavat", "deyyus", "boynuzlu", "dümbük", "dumbuk", "boynuzlanan",
+    "ibne", "ibneler", "top", "götveren", "nonoş", "lubunya", "homoseksüel", "gay",
+    "kahpe", "kaltak", "sürtük", "kaşar", "kasar", "eskort", "fahişe", "şıllık", "şırfıntı",
+    "kancık", "oturak", "yollu", "düşük", "yosma", "ucube",
+    "yavşak", "yavsak", "dallama", "lavuk", "zibidi", "hırt", "hıyar", "ipsiz",
+    "sapsız", "hödük", "dangoz", "çüş", "kodumun", "kodumunun", "koduğum",
+    "it", "köpek", "kopek", "eşşek", "eşek", "esek", "domuz", "hayvan", "çakal", "cakal",
+    "maymun", "dana", "öküz", "okuz", "inek", "keçi", "sıçan", "sırtlan", "tilki",
+    "karga", "akbaba", "kene", "bit", "kuduz", "köpoğlu", "itler", "eşoğlu eşek",
+    "hain", "hırsız", "hirsiz", "dolandırıcı", "sahtekar", "yalancı", "yalanci",
+    "düzenbaz", "sahtekâr", "üçkağıtçı", "madrabaz", "kazıkçı", "vurguncu",
+    "rüşvetçi", "zimmetçi", "arsız", "yüzsüz", "utanmaz", "haysız",
+    "sapık", "sapik", "sapıtmış", "tacizci", "tecavüzcü", "iğrenç", "manyak",
+    "psikopat", "hasta", "ruh hastası", "deli", "kaçık",
+    "dinsiz", "imansız", "kafir", "mürted", "gavur", "allahsız", "kitapsız",
+    "şişko", "sisko", "obez", "tombul", "cüce", "kel", "topal", "kör", "sağır",
+    "çirkin", "iğrenç", "tiksindirici",
+    "serseri", "sersemin", "soytarı", "şaklaban", "palyaço", "maskara", "rezil",
+    "parasız", "fakir", "dilenci", "baldırı çıplak", "ayaktakımı", "çapulcu",
+    "aylak", "işsiz güçsüz", "sersefil", "sefillik",
+    "bok", "boktan", "pislik", "pis", "boklu", "bokum", "bokunun", "sıçmak", "osur",
+    "osuruk", "sidik", "çiş", "işemek", "sıçayım", "sıçtım", "bok ye",
+    "lan", "ulan", "la", "len", "laan", "ulaan",
+    "mk", "mq", "sg", "ss", "ananı", "babanı", "sülaleni", "ecdadını", "soyunu",
+    "allahını", "kitabını", "ceddini", "yedi sülaleni", "cibiliyetini",
+    "belanı", "canını", "ruhunu", "kafanı", "götünü", "ağzına",
+    "geber", "gebertir", "öl", "öleceksin", "kahrol", "lanet", "lanetli",
+    "cehennem", "cehenneme", "defol", "kaybol", "çekil", "siktir git",
+    "sktr", "amg", "amj", "amına koyim", "orrrrospu", "piççç", "sikecem",
+    "s1k", "s!k", "am1na", "@mına", "p1ç", "orsp", "or0spu",
+    "amg", "amj", "anq", "götünsik", "yrrk", "yarr", "göt herif",
+    "puşt", "pezo", "gavad", "gavatça", "orospoluk", "orsp cocu",
+    "nanay", "g*t", "a*k", "s*k", "o*ospu", "pi*", "am*na",
+    "koydum", "koyarım", "sokarım", "soktum", "çaktım", "çakarım",
+    "becerdim", "bec", "düzdüm", "düzerim", "attım", "atarım"
+]
+
+TURKISH_SWEAR_WORDS = frozenset(w.lower().strip() for w in TURKISH_SWEAR_WORDS if w.strip())
+@dataclass(frozen=True)
+class ASRProfile:
+    label: str
+    description: str
+    use_batched: bool
+    batch_size: int
+    beam_size: int
+    best_of: int
+    condition_on_previous_text: bool
+    chunk_length: int
+    vad_threshold: float
+    min_silence_duration_ms: int
+    speech_pad_ms: int
+    temperature: tuple
+    log_prob_threshold: float
+    no_speech_threshold: float
+    repetition_penalty: float
+    vad_filter: bool = True
+    quality_gate: float = ASR_CONFIDENCE_RETRY_THRESHOLD
+    retry_profile_key: str = ""
+    hallucination_silence_threshold: float = None
+
+@dataclass(frozen=True)
+class TranscriptSegment:
+    start: float
+    end: float
+    text: str
+    avg_logprob: float = -1.0
+    no_speech_prob: float = 0.0
+    compression_ratio: float = 1.0
+    raw_text: str = ""
+
+@dataclass(frozen=True)
+class DomainProfile:
+    label: str
+    description: str
+    patterns: tuple = ()
+    canonical: dict = None
+    close_terms: tuple = ()
+    hotwords: str = ""
+
+ASR_PROFILES = {
+    "mac_turbo_sla": ASRProfile(
+        label="Mac Turbo 20sn +95 Kapısı",
+        description="Apple Silicon ve turbo model için düşük gecikmeli tek ana geçiş; kalite düşükse yalnızca süre bütçesi kalırsa kurtarma dener.",
+        use_batched=True,
+        batch_size=12,
+        beam_size=2,
+        best_of=2,
+        condition_on_previous_text=False,
+        chunk_length=15,
+        vad_threshold=0.42,
+        min_silence_duration_ms=320,
+        speech_pad_ms=160,
+        temperature=(0.0,),
+        log_prob_threshold=-1.05,
+        no_speech_threshold=0.62,
+        repetition_penalty=1.02,
+        quality_gate=92.0,
+        retry_profile_key="rescue",
+        hallucination_silence_threshold=1.2,
+    ),
+    "ultimate_hybrid": ASRProfile(
+        label="Nihai Hibrit Hız+95+",
+        description="Hızlı kurumsal denge: batch çözümleme, güçlü bağlam, kalite düşükse otomatik kurtarma geçişi.",
+        use_batched=True,
+        batch_size=8,
+        beam_size=4,
+        best_of=4,
+        condition_on_previous_text=True,
+        chunk_length=20,
+        vad_threshold=0.30,
+        min_silence_duration_ms=550,
+        speech_pad_ms=350,
+        temperature=(0.0, 0.2, 0.4),
+        log_prob_threshold=-1.05,
+        no_speech_threshold=0.48,
+        repetition_penalty=1.08,
+        quality_gate=93.0,
+        retry_profile_key="rescue",
+        hallucination_silence_threshold=1.0,
+    ),
+    "ultimate_accuracy": ASRProfile(
+        label="Nihai Kalite Yakın-100",
+        description="En ağır final/kabul testi profili: daha yavaş, en güçlü beam ve düşük ses kurtarma ayarı.",
+        use_batched=False,
+        batch_size=1,
+        beam_size=7,
+        best_of=7,
+        condition_on_previous_text=True,
+        chunk_length=30,
+        vad_threshold=0.22,
+        min_silence_duration_ms=900,
+        speech_pad_ms=550,
+        temperature=(0.0, 0.2, 0.4, 0.6),
+        log_prob_threshold=-1.20,
+        no_speech_threshold=0.35,
+        repetition_penalty=1.14,
+        quality_gate=94.0,
+        retry_profile_key="rescue",
+        hallucination_silence_threshold=1.0,
+    ),
+    "apex_quality": ASRProfile(
+        label="Apple Kalite (Apex)",
+        description="Hız değil doğruluk. beam=10, best_of=10, çoklu geçiş, en kötü ses bile %95+ hedefi.",
+        use_batched=False,
+        batch_size=1,
+        beam_size=10,
+        best_of=10,
+        condition_on_previous_text=True,
+        chunk_length=25,
+        vad_threshold=0.18,
+        min_silence_duration_ms=1200,
+        speech_pad_ms=600,
+        temperature=(0.0, 0.1, 0.2, 0.3, 0.5),
+        log_prob_threshold=-0.8,
+        no_speech_threshold=0.30,
+        repetition_penalty=1.15,
+        quality_gate=95.0,
+        retry_profile_key="rescue",
+        hallucination_silence_threshold=0.8,
+    ),
+    "enterprise": ASRProfile(
+        label="Kurumsal Maksimum 95+",
+        description="Şirket teslimi için en yüksek doğruluk: güçlü beam, geniş bağlam, otomatik düşük-güven yeniden deneme.",
+        use_batched=False,
+        batch_size=1,
+        beam_size=5,
+        best_of=5,
+        condition_on_previous_text=True,
+        chunk_length=24,
+        vad_threshold=0.28,
+        min_silence_duration_ms=700,
+        speech_pad_ms=420,
+        temperature=(0.0, 0.2, 0.4),
+        log_prob_threshold=-1.05,
+        no_speech_threshold=0.45,
+        repetition_penalty=1.10,
+        quality_gate=ASR_CONFIDENCE_RETRY_THRESHOLD,
+        retry_profile_key="rescue",
+    ),
+    "banking": ASRProfile(
+        label="Kurumsal 95 Hedef",
+        description="Çağrı merkezi için stabil segmentleme, sektör sözlüğü ve denetlenebilir düzeltme.",
+        use_batched=True,
+        batch_size=8,
+        beam_size=3,
+        best_of=3,
+        condition_on_previous_text=True,
+        chunk_length=18,
+        vad_threshold=0.35,
+        min_silence_duration_ms=450,
+        speech_pad_ms=250,
+        temperature=(0.0, 0.2),
+        log_prob_threshold=-1.0,
+        no_speech_threshold=0.55,
+        repetition_penalty=1.05,
+        quality_gate=91.0,
+        retry_profile_key="rescue",
+        hallucination_silence_threshold=1.0,
+    ),
+    "smart": ASRProfile(
+        label="Akıllı 90+",
+        description="Önerilen profil: turbo model, bağlam koruma ve dengeli beam ayarı.",
+        use_batched=True,
+        batch_size=8,
+        beam_size=3,
+        best_of=3,
+        condition_on_previous_text=True,
+        chunk_length=18,
+        vad_threshold=0.35,
+        min_silence_duration_ms=450,
+        speech_pad_ms=250,
+        temperature=(0.0, 0.2),
+        log_prob_threshold=-1.0,
+        no_speech_threshold=0.55,
+        repetition_penalty=1.05,
+        hallucination_silence_threshold=1.0,
+    ),
+    "latency": ASRProfile(
+        label="20 sn Hedef",
+        description="İlk metni hızlı almak için agresif batch ve greedy çözümleme.",
+        use_batched=True,
+        batch_size=12,
+        beam_size=1,
+        best_of=1,
+        condition_on_previous_text=False,
+        chunk_length=15,
+        vad_threshold=0.45,
+        min_silence_duration_ms=300,
+        speech_pad_ms=120,
+        temperature=(0.0,),
+        log_prob_threshold=-1.2,
+        no_speech_threshold=0.65,
+        repetition_penalty=1.0,
+        hallucination_silence_threshold=1.5,
+    ),
+    "accuracy": ASRProfile(
+        label="Maksimum Doğruluk",
+        description="Daha yavaş ama zor seslerde daha kararlı sonuç için güçlü beam.",
+        use_batched=False,
+        batch_size=1,
+        beam_size=5,
+        best_of=5,
+        condition_on_previous_text=True,
+        chunk_length=22,
+        vad_threshold=0.30,
+        min_silence_duration_ms=650,
+        speech_pad_ms=350,
+        temperature=(0.0, 0.2, 0.4),
+        log_prob_threshold=-1.0,
+        no_speech_threshold=0.50,
+        repetition_penalty=1.08,
+        hallucination_silence_threshold=1.0,
+    ),
+    "rescue": ASRProfile(
+        label="Kötü Ses Kurtarma",
+        description="Düşük ses, gürültü ve kesik konuşmada daha fazla konuşma yakalamak için ikinci geçiş profili.",
+        use_batched=False,
+        batch_size=1,
+        beam_size=5,
+        best_of=5,
+        condition_on_previous_text=True,
+        chunk_length=30,
+        vad_threshold=0.22,
+        min_silence_duration_ms=900,
+        speech_pad_ms=500,
+        temperature=(0.0, 0.2, 0.4, 0.6),
+        log_prob_threshold=-1.25,
+        no_speech_threshold=0.35,
+        repetition_penalty=1.12,
+        quality_gate=ASR_CONFIDENCE_RETRY_THRESHOLD,
+        hallucination_silence_threshold=0.8,
+    ),
+}
