@@ -20,7 +20,9 @@ from asr_pro.db.models import Conversation, KeywordHit, Topic, TranscriptSegment
 from asr_pro.db.session import SessionLocal
 from asr_pro.services.conversation_service import analyze_without_save, save_conversation_with_analysis
 
-router = APIRouter(prefix="/conversations", tags=["conversations"])
+from asr_pro.api.routes.auth import get_current_user
+
+router = APIRouter(prefix="/conversations", tags=["conversations"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=list[ConversationOut])

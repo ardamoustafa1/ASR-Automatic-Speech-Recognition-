@@ -10,7 +10,9 @@ from asr_pro.api.deps import get_db
 from asr_pro.api.schemas.analytics import DailyPointOut, DashboardOut, TrendOut
 from asr_pro.core.trend_engine import compute_trend, dashboard_summary, top_keywords
 
-router = APIRouter(prefix="/analytics", tags=["analytics"])
+from asr_pro.api.routes.auth import get_current_user
+
+router = APIRouter(prefix="/analytics", tags=["analytics"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("/dashboard", response_model=DashboardOut)
