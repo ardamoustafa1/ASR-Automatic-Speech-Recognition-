@@ -115,10 +115,16 @@ def seed_defaults(db: Session) -> None:
             )
             db.add(alert)
 
+    import secrets
+    from loguru import logger
+
     # Admin User Seeding
     admin_user = db.query(User).filter(User.username == "admin").first()
     if not admin_user:
-        admin_password = os.environ.get("ASR_ADMIN_PASSWORD", "password123")
+        admin_password = os.environ.get("ASR_ADMIN_PASSWORD")
+        if not admin_password:
+            admin_password = secrets.token_urlsafe(16)
+            logger.warning(f"ASR_ADMIN_PASSWORD not set. Generated random admin password: {admin_password}")
         db.add(User(
             id=new_uuid(),
             username="admin",
@@ -130,10 +136,14 @@ def seed_defaults(db: Session) -> None:
     # Agent User Seeding
     agent_user = db.query(User).filter(User.username == "agent").first()
     if not agent_user:
+        agent_password = os.environ.get("ASR_AGENT_PASSWORD")
+        if not agent_password:
+            agent_password = secrets.token_urlsafe(16)
+            logger.warning(f"ASR_AGENT_PASSWORD not set. Generated random agent password: {agent_password}")
         db.add(User(
             id=new_uuid(),
             username="agent",
-            hashed_password=pwd_context.hash("password123"),
+            hashed_password=pwd_context.hash(agent_password),
             role="agent",
             is_active=True
         ))
