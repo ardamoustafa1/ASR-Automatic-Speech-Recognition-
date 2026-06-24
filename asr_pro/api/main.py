@@ -21,6 +21,7 @@ trace_id_var: ContextVar[str] = ContextVar("trace_id", default="")
 
 # ─── Structured logging setup ─────────────────────────────────────────────────
 logger.remove()
+logger.configure(extra={"trace_id": ""})
 if os.getenv("ENV", "dev") == "prod":
     logger.add(sys.stdout, serialize=True, level="INFO", backtrace=False, diagnose=False)
 else:
