@@ -46,8 +46,9 @@ cp .env.example .env
 docker-compose up -d
 ```
 
-The Frontend Dashboard will be available at `http://localhost:8501`.  
-The API documentation will be available at `http://localhost:8000/docs`.
+The React Dashboard will be available at `http://localhost:5173`.
+The Legacy Streamlit UI will be available at `http://localhost:8501`.
+The API Documentation (Swagger UI) will be available at `http://localhost:8000/api/docs`.
 
 ### Local Development (Without Docker)
 
