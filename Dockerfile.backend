@@ -28,7 +28,7 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY asr_pro/ asr_pro/
-COPY ASR/ ASR/
+COPY tools/legacy_streamlit/ASR/ ASR/
 
 # EXPOSE only the API port, Streamlit container will expose 8501 separately
 EXPOSE 8000
