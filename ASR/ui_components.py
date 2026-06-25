@@ -303,7 +303,7 @@ def render_download_buttons(uploaded_name, formatted_text, segments_data, detect
     base_name = os.path.splitext(uploaded_name)[0]
     with col_d1:
         st.download_button(
-            label="📥 RAPOR (TXT)",
+            label="Rapor (TXT)",
             data=formatted_text,
             file_name=f"ASR_Rapor_{base_name}.txt",
             mime="text/plain"
@@ -312,7 +312,7 @@ def render_download_buttons(uploaded_name, formatted_text, segments_data, detect
         try:
             srt_content = create_srt(segments_data)
             st.download_button(
-                label="🎬 ALTYAZI (SRT)",
+                label="Altyazı (SRT)",
                 data=srt_content,
                 file_name=f"{base_name}.srt",
                 mime="text/plain"
@@ -324,7 +324,7 @@ def render_download_buttons(uploaded_name, formatted_text, segments_data, detect
             tox_info = f"{toxicity_label} (%{negative_score*100:.1f})"
             pdf_bytes = create_pdf_report(uploaded_name, formatted_text, detected_swears, tox_info)
             st.download_button(
-                label="📑 RAPOR (PDF)",
+                label="Rapor (PDF)",
                 data=pdf_bytes,
                 file_name=f"ASR_Rapor_{base_name}.pdf",
                 mime="application/pdf"
@@ -698,7 +698,7 @@ def render_sidebar_module_map(active_mode):
         "Tek Dosya Analizi": "Çağrılar",
         "Canlı Dinleme (Mikrofon)": "Gerçek Zamanlı",
         "Toplu İşlem Merkezi": "Sistem Yönetimi",
-        "📈 Trend ve Erken Uyarı Radarı": "Sistem Yönetimi",
+        "Trend ve Erken Uyarı Radarı": "Sistem Yönetimi",
     }
     active_group = mode_to_group.get(active_mode, "Çağrılar")
     groups = [
@@ -869,27 +869,27 @@ def render_app():
         st.markdown('<div class="sidebar-section-title">İş akışı</div>', unsafe_allow_html=True)
         mode = st.radio(
             "Seçiniz",
-            ("Tek Dosya Analizi", "Canlı Dinleme (Mikrofon)", "Toplu İşlem Merkezi", "📈 Trend ve Erken Uyarı Radarı"),
+            ("Tek Dosya Analizi", "Canlı Dinleme (Mikrofon)", "Toplu İşlem Merkezi", "Trend ve Erken Uyarı Radarı"),
         )
 
         st.markdown('<div class="sidebar-separator"></div>', unsafe_allow_html=True)
-        st.markdown('<div class="sidebar-section-title">🧠 Yapay Zeka Yetenekleri</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sidebar-section-title">Yapay Zeka Yetenekleri</div>', unsafe_allow_html=True)
         
-        enable_empathy = st.toggle("💖 Empati ve Soft Skill Analizi", value=True, help="Temsilcinin aktif dinleme, şefkat ve robotik dil kullanımını analiz eder.")
-        enable_autonote = st.toggle("📝 CRM Kapanış Notu (Auto-Note)", value=True, help="Çağrıyı edebi bir dille özetler ve CRM'e hazır bilet oluşturur.")
-        enable_churn = st.toggle("⚠️ İptal (Churn) ve Risk Analizi", value=True, help="Müşterinin abonelik iptal riskini ve kurumsal uyumsuzlukları ölçer.")
+        enable_empathy = st.toggle("Empati ve Soft Skill Analizi", value=True, help="Temsilcinin aktif dinleme, şefkat ve robotik dil kullanımını analiz eder.")
+        enable_autonote = st.toggle("CRM Kapanış Notu (Auto-Note)", value=True, help="Çağrıyı edebi bir dille özetler ve CRM'e hazır bilet oluşturur.")
+        enable_churn = st.toggle("İptal (Churn) ve Risk Analizi", value=True, help="Müşterinin abonelik iptal riskini ve kurumsal uyumsuzlukları ölçer.")
         
         st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
-        ollama_model = st.selectbox("🔒 Lokal LLM Motoru (Özetleme İçin)", ["Kapalı (Sadece Yerel Motor)", "llama3", "llama3.1", "mistral", "gemma"])
+        ollama_model = st.selectbox("Lokal LLM Motoru (Özetleme İçin)", ["Kapalı (Sadece Yerel Motor)", "llama3", "llama3.1", "mistral", "gemma"])
         st.caption("Yerel LLM'in açık olması için terminalde 'ollama run llama3' yazmalısınız.")
 
         st.markdown('<div class="sidebar-separator"></div>', unsafe_allow_html=True)
-        st.markdown('<div class="sidebar-section-title">💻 Donanım ve Model Seçimi</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sidebar-section-title">Donanım ve Model Seçimi</div>', unsafe_allow_html=True)
         
         is_mac_host = is_apple_silicon_host()
         hardware_engine = st.radio(
             "Altyapı",
-            ["🖥️ Windows (Nvidia CUDA / Standart)", "🍏 Mac (Apple Silicon MLX - Çok Hızlı)"],
+            ["Windows (Nvidia CUDA / Standart)", "Mac (Apple Silicon MLX - Çok Hızlı)"],
             index=1 if is_mac_host else 0,
             help="Sistemi çalıştırdığınız bilgisayara göre motor seçin.",
             label_visibility="collapsed"
@@ -1743,7 +1743,7 @@ def render_app():
         # --------------------------
         # --- TREND VE ERKEN UYARI RADARI ---
         # --------------------------
-        elif mode == "📈 Trend ve Erken Uyarı Radarı":
+        elif mode == "Trend ve Erken Uyarı Radarı":
             from asr_pro.core.trend_engine import forecast_tomorrow
             render_panel(
                 "Müşteri Yolculuğu ve Erken Uyarı Radarı",
