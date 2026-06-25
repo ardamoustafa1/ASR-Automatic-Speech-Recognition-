@@ -382,7 +382,7 @@ def render_raw_asr_panel(raw_transcription: str, key_prefix: str = "raw_asr"):
     button_key = f"{key_prefix}_fullscreen_{hashlib.sha1((raw_transcription or '').encode('utf-8')).hexdigest()[:12]}"
     _, action_col = st.columns([0.72, 0.28])
     with action_col:
-        if st.button("Tam Ekran Oku", key=button_key, use_container_width=True):
+        if st.button("Tam Ekran Oku", key=button_key):
             render_raw_asr_dialog(raw_transcription)
     st.markdown(
         f'''
@@ -1814,7 +1814,7 @@ def render_app():
             if trend_data:
                 df = pd.DataFrame.from_dict(trend_data, orient='index')
                 if not df.empty and not df.columns.empty and df.sum().sum() > 0:
-                    st.line_chart(df, height=400, use_container_width=True)
+                    st.line_chart(df, height=400)
                 else:
                     st.info("Henüz görüntülenecek trend verisi bulunmuyor.")
                 
