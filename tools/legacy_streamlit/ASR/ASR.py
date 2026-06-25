@@ -118,4 +118,3 @@ from ui_components import *
 
 render_app()
 
-print("DEBUG: STREAMLIT EXECUTING ASR.py")
