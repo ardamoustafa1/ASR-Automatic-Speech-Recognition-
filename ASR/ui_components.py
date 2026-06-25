@@ -886,10 +886,11 @@ def render_app():
         st.markdown('<div class="sidebar-separator"></div>', unsafe_allow_html=True)
         st.markdown('<div class="sidebar-section-title">💻 Donanım ve Model Seçimi</div>', unsafe_allow_html=True)
         
+        is_mac_host = is_apple_silicon_host()
         hardware_engine = st.radio(
             "Altyapı",
             ["🖥️ Windows (Nvidia CUDA / Standart)", "🍏 Mac (Apple Silicon MLX - Çok Hızlı)"],
-            index=0,
+            index=1 if is_mac_host else 0,
             help="Sistemi çalıştırdığınız bilgisayara göre motor seçin.",
             label_visibility="collapsed"
         )
