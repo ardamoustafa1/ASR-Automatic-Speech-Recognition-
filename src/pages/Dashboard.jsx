@@ -2,36 +2,67 @@ import { useState, useEffect } from "react";
 import { Activity, Bell, Hash, Phone } from "lucide-react";
 import { api } from "../api/client";
 import { TrendChart, Sparkline } from "../components/TrendChart";
+import { Skeleton } from "../components/common/Skeleton";
+import { ErrorState, EmptyState } from "../components/common/EmptyState";
+import { BarChart3 } from "lucide-react";
 
 export default function DashboardPage() {
   const [summary, setSummary] = useState(null);
   const [trend, setTrend] = useState(null);
   const [topKeywords, setTopKeywords] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const [dash, top] = await Promise.all([api.dashboard(), api.topKeywords("7d")]);
-        setSummary(dash);
-        setTopKeywords(top);
-        if (dash.top_rising_keyword?.keyword) {
-          const t = await api.trends({ keyword: dash.top_rising_keyword.keyword, window: "7d" });
-          setTrend(t);
-        } else if (top[0]?.keyword) {
-          const t = await api.trends({ keyword: top[0].keyword, window: "7d" });
-          setTrend(t);
-        }
-      } catch (e) {
+  const loadDashboard = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [dash, top] = await Promise.all([api.dashboard(), api.topKeywords("7d")]);
+      setSummary(dash);
+      setTopKeywords(top);
+      if (dash.top_rising_keyword?.keyword) {
+        const t = await api.trends({ keyword: dash.top_rising_keyword.keyword, window: "7d" });
+        setTrend(t);
+      } else if (top[0]?.keyword) {
+        const t = await api.trends({ keyword: top[0].keyword, window: "7d" });
+        setTrend(t);
+      }
+    } catch (e) {
         console.error(e);
+        setError(e);
       } finally {
         setLoading(false);
       }
-    }
-    load();
+  };
+
+  useEffect(() => {
+    loadDashboard();
   }, []);
 
-  if (loading) return <div className="page-loading">Yükleniyor...</div>;
+  if (error) return <ErrorState title="Dashboard Yüklenemedi" error={error} retry={loadDashboard} />;
+
+  if (loading) {
+    return (
+      <div className="page-content">
+        <header className="page-header">
+          <h1>Anahtar Kelime & Konu Analitiği</h1>
+          <p>Görüşmelerde otomatik kelime tespiti ve trend raporlama</p>
+        </header>
+        <div className="kpi-grid">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div className="kpi-card" key={i}>
+              <Skeleton height="16px" width="40%" style={{ marginBottom: "1rem" }} />
+              <Skeleton height="32px" width="60%" />
+            </div>
+          ))}
+        </div>
+        <div className="dashboard-grid">
+          <div className="glass-panel"><Skeleton height="300px" /></div>
+          <div className="glass-panel"><Skeleton height="300px" /></div>
+        </div>
+      </div>
+    );
+  }
 
   const pct = trend?.pct_change ?? 0;
   const pctClass = pct >= 30 ? "danger" : pct >= 15 ? "warning" : "neutral";
@@ -112,7 +143,11 @@ export default function DashboardPage() {
                 <span className="kw-count">{kw.hit_count} eşleşme</span>
               </li>
             ))}
-            {!topKeywords.length && <li className="empty">Henüz veri yok</li>}
+            {!topKeywords.length && (
+              <div style={{ padding: "2rem 0" }}>
+                <EmptyState title="Veri Yok" description="Henüz anahtar kelime eşleşmesi bulunamadı." icon={BarChart3} />
+              </div>
+            )}
           </ul>
         </div>
       </div>
