@@ -51,6 +51,7 @@ docker-compose up -d
 ```
 
 The **React Dashboard** will be available at `http://localhost:5173`.  
+The **Legacy Streamlit UI** will be available at `http://localhost:8501`.
 The **API Documentation** (Swagger UI) will be available at `http://localhost:8000/api/docs`.
 
 ### Local Development (Without Docker)
