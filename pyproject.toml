@@ -2,6 +2,9 @@
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.packages.find]
+exclude = ["tests*", "dev-scripts*", "tools.legacy_streamlit*"]
+
 [project]
 name = "asr_pro"
 version = "1.0.0"
