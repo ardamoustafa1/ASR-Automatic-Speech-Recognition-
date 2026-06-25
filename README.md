@@ -1,6 +1,7 @@
 <div align="center">
 
 # ASR-Pro: Enterprise Speech Intelligence Platform
+
 [![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688.svg?logo=fastapi)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-19.0-61DAFB.svg?logo=react)](https://react.dev/)
@@ -11,11 +12,15 @@
 [![GitHub Open Issues](https://img.shields.io/github/issues/ardamoustafa/ASR-Pro)](https://github.com/ardamoustafa/ASR-Pro/issues)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-*An advanced, zero-shot AI-powered speech intelligence platform designed for enterprise contact centers. Converts speech to text and analyzes sentiment, churn risk, compliance, and empathy in real-time.*
+_An advanced, zero-shot AI-powered speech intelligence platform designed for enterprise contact centers. Converts speech to text and analyzes sentiment, churn risk, compliance, and empathy in real-time._
 
 [Türkçe Dokümantasyon (Turkish README)](README_TR.md) • [API Documentation](docs/api.md) • [Architecture](docs/ARCHITECTURE.md)
 
-<img src="docs/assets/demo.gif" alt="ASR Pro Demo" width="800" />
+### 📸 Dashboard & Interface
+
+| Modern React Dashboard                   | Live ASR & Keyword Analysis | Real-time Analytics                       |
+| ---------------------------------------- | --------------------------- | ----------------------------------------- |
+| ![](docs/screenshots/dashboard_dark.png) | ![](docs/assets/demo.gif)   | ![](docs/screenshots/analytics_trend.png) |
 
 </div>
 
@@ -26,6 +31,7 @@
 ASR-Pro is not just another transcription service. It is a full-fledged customer intelligence platform designed to catch compliance breaches, predict customer churn, and monitor agent soft-skills in **real-time** or in batch mode. We engineered it to handle high-concurrency enterprise workloads with built-in thread safety and sliding-window websocket performance.
 
 ### ✨ Feature Highlights
+
 - **🎙️ Real-Time ASR (WebSockets):** Streaming audio transcription with sub-second latency and O(1) buffer optimization.
 - **🧠 Zero-Shot AI Engines:** Uses HuggingFace and local LLMs to detect sentiment, churn risk, and empathy without massive fine-tuning.
 - **🛡️ Compliance & QA:** Automatically scores agent compliance against custom, fuzzy-matched keyword rules.
@@ -92,7 +98,7 @@ For an in-depth view of the system diagrams, see [ARCHITECTURE.md](docs/ARCHITEC
 
 ## 📚 API Reference
 
-For integration purposes, ASR-Pro provides a comprehensive REST and WebSocket API. 
+For integration purposes, ASR-Pro provides a comprehensive REST and WebSocket API.
 Read the full API Documentation at [docs/api.md](docs/api.md).
 
 ---
