@@ -65,7 +65,7 @@ target-version = "py39"
 line-length = 100
 exclude = [
     ".venv", "venv", "__pycache__", "dist", "build",
-    "node_modules", ".git", "alembic/versions",
+    "node_modules", ".git", "alembic/versions", "tools/legacy_streamlit", "tools/legacy", "dev-scripts"
 ]
 
 [tool.ruff.lint]

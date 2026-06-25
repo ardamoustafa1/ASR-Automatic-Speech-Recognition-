@@ -72,7 +72,7 @@ class ASRService:
         # Apple Silicon MLX Check
         if platform.system() == "Darwin" and platform.machine() in ["arm64", "aarch64"]:
             try:
-                import mlx_whisper
+                import mlx_whisper  # noqa: F401
                 self._device = "mps"
                 self._compute_type = "float16"
                 self._model_size = model_size
