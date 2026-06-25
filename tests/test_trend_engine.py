@@ -1,6 +1,5 @@
-import pytest
-from datetime import datetime, timedelta
-from asr_pro.core.trend_engine import get_trend_data, detect_anomalies, forecast_tomorrow, init_db
+from asr_pro.core.trend_engine import detect_anomalies, forecast_tomorrow, get_trend_data, init_db
+
 
 def test_trend_data_generation():
     init_db()

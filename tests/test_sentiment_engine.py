@@ -1,10 +1,11 @@
 """Tests for the ML-based sentiment detection engine."""
 
 import os
+
 import pytest
 
 from asr_pro.core.keyword_engine import SegmentInput
-from asr_pro.core.sentiment_engine import analyze_sentiment, SentimentClassifier
+from asr_pro.core.sentiment_engine import SentimentClassifier, analyze_sentiment
 
 MODEL_AVAILABLE = os.environ.get("ASR_TEST_NO_MODEL") != "1"
 
@@ -31,7 +32,7 @@ def test_frustration_scenario_from_image():
     # Scenario: "Bu üçüncü kez arıyorum, hâlâ çözülmedi."
     seg = SegmentInput(start=0, end=5, text="Bu üçüncü kez arıyorum, hâlâ çözülmedi.")
     result = analyze_sentiment(seg)
-    
+
     # Check that it identifies frustration/anxiety and high/medium stress
     assert result.emotion_category in ["Hayal Kırıklığı", "Endişe", "Öfke"]
     assert result.sentiment_score < -0.1
@@ -42,7 +43,7 @@ def test_semantic_frustration_no_keywords():
     # This sentence has no obvious lexicon words for anger, just exhaustion/frustration context
     seg = SegmentInput(start=0, end=5, text="Sürekli aynı şeyleri anlatmaktan yoruldum, bir arpa boyu yol alamadık.")
     result = analyze_sentiment(seg)
-    
+
     assert result.emotion_category in ["Hayal Kırıklığı", "Öfke", "Endişe"]
     assert result.sentiment_score < -0.1
 
@@ -51,7 +52,7 @@ def test_semantic_frustration_no_keywords():
 def test_positive_reinforcement():
     seg = SegmentInput(start=0, end=5, text="Çok naziksiniz, işlemlerimi çok hızlı hallettiniz.")
     result = analyze_sentiment(seg)
-    
+
     assert result.emotion_category == "Memnuniyet"
     assert result.stress_level in ["Düşük", "Normal"]
     assert result.sentiment_score > 0.0
@@ -60,7 +61,7 @@ def test_positive_reinforcement():
 def test_anger_detection():
     seg = SegmentInput(start=0, end=5, text="Böyle saçmalık görmedim, sizi mahkemeye vereceğim!")
     result = analyze_sentiment(seg)
-    
+
     assert result.emotion_category in ["Öfke", "Endişe", "Hayal Kırıklığı"]
     assert result.stress_level in ["Yüksek", "Normal"]
     assert result.sentiment_score < -0.1

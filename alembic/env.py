@@ -1,7 +1,6 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
@@ -16,10 +15,12 @@ if config.config_file_name is not None:
 
 import os
 import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from asr_pro.db.models import Base
 from asr_pro.config import DATABASE_URL
+from asr_pro.db.models import Base
+
 target_metadata = Base.metadata
 
 config.set_main_option("sqlalchemy.url", DATABASE_URL)

@@ -1,21 +1,20 @@
 import sys
-import os
-import pytest
 from pathlib import Path
 
+import pytest
+
 # Add the ASR directory to sys.path so its internal imports (like 'import config') work
-ASR_DIR = Path(__file__).resolve().parent.parent / "ASR"
+ASR_DIR = Path(__file__).resolve().parent.parent / "tools" / "legacy_streamlit" / "ASR"
 sys.path.insert(0, str(ASR_DIR))
 
 try:
     from logic_handlers import (
-        normalize_for_wer,
-        levenshtein_distance,
         calculate_word_accuracy,
+        clamp,
         format_timestamp,
-        resolve_model_name,
+        levenshtein_distance,
+        normalize_for_wer,
         resolve_mlx_repo_name,
-        clamp
     )
 except ImportError as e:
     pytest.skip(f"Could not import ASR logic handlers. Is the ASR directory set up correctly? {e}", allow_module_level=True)
@@ -59,7 +58,7 @@ def test_calculate_word_accuracy():
     assert res["wer"] == 0.0
     assert res["accuracy"] == 100.0
     assert res["edit_distance"] == 0
-    
+
     # 1 error out of 3 words -> wer = 1/3, acc = 66.67%
     res = calculate_word_accuracy("bu bir test", "bu bir hata")
     assert res["wer"] == 1/3
@@ -76,7 +75,7 @@ def test_calculate_word_accuracy():
     res = calculate_word_accuracy("", "test")
     assert res["wer"] == 1.0
     assert res["accuracy"] == 0.0
-    
+
     res = calculate_word_accuracy("", "")
     assert res["wer"] == 0.0
     assert res["accuracy"] == 100.0

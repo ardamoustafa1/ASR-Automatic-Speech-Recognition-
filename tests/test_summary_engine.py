@@ -1,11 +1,11 @@
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from asr_pro.core.summary_engine import (
     _extract_executive_summary,
     generate_crm_summary,
     generate_ollama_summary,
-    CallSummary
 )
+
 
 class MockClassifier:
     def predict(self, text, labels, hypothesis):
@@ -18,7 +18,7 @@ def test_executive_summary_short_text():
 
 def test_executive_summary_long_text():
     text = """
-    Müşteri hizmetlerine hoş geldiniz. İsmim Ayşe, size nasıl yardımcı olabilirim? 
+    Müşteri hizmetlerine hoş geldiniz. İsmim Ayşe, size nasıl yardımcı olabilirim?
     Evet anlıyorum, faturanızda beklentinizin üzerinde bir rakam gelmiş.
     Bunun sebebi yurt dışı dolaşım paketini açık bırakmış olmanızdır.
     Durumu inceledim ve mağduriyetinizi gidermek adına faturanızdan 500 TL iade işlemini başlattım.
@@ -70,7 +70,7 @@ def test_generate_ollama_summary_success(mock_post):
 def test_generate_ollama_summary_fallback(mock_post):
     # Mock Ollama failure
     mock_post.side_effect = Exception("Connection Refused")
-    
+
     classifier = MockClassifier()
     res = generate_ollama_summary("Müşteri aradı ve iade istedi.", model_name="llama3", classifier=classifier)
     # Fallbacks to standard CRM summary which uses the classifier returning the first label

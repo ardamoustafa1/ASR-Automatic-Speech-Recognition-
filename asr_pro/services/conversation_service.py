@@ -1,26 +1,28 @@
 from __future__ import annotations
+
 """Persist conversations and keyword analysis results."""
 
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
+from asr_pro.core.alert_engine import evaluate_alerts
 from asr_pro.core.keyword_engine import (
-    SegmentInput,
-    RuleInput,
     KeywordHitResult,
+    RuleInput,
+    SegmentInput,
     analyze_keywords,
     hits_to_dict,
 )
 from asr_pro.core.topic_classifier import TopicInput, classify_topics_from_hits
-from asr_pro.core.alert_engine import evaluate_alerts
 from asr_pro.db.models import (
     Conversation,
-    TranscriptSegmentRow,
-    KeywordRule,
     KeywordHit,
+    KeywordRule,
     Topic,
+    TranscriptSegmentRow,
     new_uuid,
 )
 
@@ -94,7 +96,7 @@ def save_conversation_with_analysis(
     metadata: Optional[dict] = None,
 ) -> dict:
     from asr_pro.core.churn_engine import analyze_churn_risk
-    
+
     segments = segments_from_any(segments_data)
     rules = rules_from_db(db, sector)
     hits = analyze_keywords(segments, rules, sector=sector)
@@ -106,11 +108,11 @@ def save_conversation_with_analysis(
     churn_result = analyze_churn_risk(segments, customer_speaker_id=customer_speaker_id)
 
     duration = max((s.end for s in segments), default=0.0)
-    
+
     final_metadata = {"uploaded_name": uploaded_name, **(metadata or {})}
     final_metadata["churn_risk"] = churn_result.risk_score
     final_metadata["is_high_risk"] = churn_result.is_high_risk
-    
+
     conv = Conversation(
         id=new_uuid(),
         sector=sector,

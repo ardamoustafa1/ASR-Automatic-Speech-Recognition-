@@ -1,5 +1,5 @@
-import pytest
 from fastapi.testclient import TestClient
+
 
 def get_admin_token(client: TestClient) -> str:
     response = client.post("/api/v1/auth/login", data={"username": "admin", "password": "password123"})

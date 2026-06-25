@@ -3,8 +3,8 @@
 import pytest
 
 from asr_pro.core.keyword_engine import (
-    SegmentInput,
     RuleInput,
+    SegmentInput,
     analyze_keywords,
     evaluate_rule_on_text,
 )
