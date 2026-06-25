@@ -1813,7 +1813,10 @@ def render_app():
             import pandas as pd
             if trend_data:
                 df = pd.DataFrame.from_dict(trend_data, orient='index')
-                st.line_chart(df, height=400, use_container_width=True)
+                if not df.empty and not df.columns.empty and df.sum().sum() > 0:
+                    st.line_chart(df, height=400, use_container_width=True)
+                else:
+                    st.info("Henüz görüntülenecek trend verisi bulunmuyor.")
                 
                 with st.expander("Ham Veriyi Görüntüle"):
                     st.dataframe(df)
