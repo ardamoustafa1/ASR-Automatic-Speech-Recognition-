@@ -1,4 +1,5 @@
 """Thread-safe Singleton ASR Service using Faster-Whisper."""
+
 import os
 import platform
 import threading
@@ -52,6 +53,7 @@ class ASRService:
     def _check_cuda(self) -> bool:
         try:
             import torch
+
             return torch.cuda.is_available()
         except Exception:
             return False
@@ -73,6 +75,7 @@ class ASRService:
         if platform.system() == "Darwin" and platform.machine() in ["arm64", "aarch64"]:
             try:
                 import mlx_whisper  # noqa: F401
+
                 self._device = "mps"
                 self._compute_type = "float16"
                 self._model_size = model_size
@@ -80,15 +83,15 @@ class ASRService:
                 logger.info(f"Loading ASR model '{model_size}' via Apple MLX (God-Tier Mode)")
                 return None  # MLX handles loading during transcribe
             except ImportError:
-                logger.warning("mlx-whisper not found. Falling back to faster-whisper CPU/int8. For God-Tier performance on Mac, run: pip install mlx-whisper")
+                logger.warning(
+                    "mlx-whisper not found. Falling back to faster-whisper CPU/int8. For God-Tier performance on Mac, run: pip install mlx-whisper"
+                )
                 self._is_mlx = False
         else:
             self._is_mlx = False
 
         if WhisperModel is None:
-            raise RuntimeError(
-                "faster-whisper is not installed. Run: pip install faster-whisper"
-            )
+            raise RuntimeError("faster-whisper is not installed. Run: pip install faster-whisper")
 
         cpu_threads = max(4, os.cpu_count() or 4)
         num_workers = 1 if self._device == "cuda" else min(4, max(1, cpu_threads // 2))
@@ -118,6 +121,7 @@ class ASRService:
 
         if self._is_mlx:
             import mlx_whisper
+
             repo = f"mlx-community/whisper-{self._model_size}"
             logger.debug(f"Transcribing via MLX ({repo})...")
             res = mlx_whisper.transcribe(
@@ -128,11 +132,9 @@ class ASRService:
             segments_gen = []
             duration = 0.0
             for s in res.get("segments", []):
-                segments_gen.append(TranscriptionSegment(
-                    start=s["start"],
-                    end=s["end"],
-                    text=s["text"].strip()
-                ))
+                segments_gen.append(
+                    TranscriptionSegment(start=s["start"], end=s["end"], text=s["text"].strip())
+                )
                 duration = max(duration, s["end"])
             return segments_gen, duration
 
@@ -149,7 +151,5 @@ class ASRService:
             for s in segments_gen_fw
         ]
 
-        logger.debug(
-            f"Transcribed {len(segments)} segments, duration={info.duration:.1f}s"
-        )
+        logger.debug(f"Transcribed {len(segments)} segments, duration={info.duration:.1f}s")
         return segments, info.duration

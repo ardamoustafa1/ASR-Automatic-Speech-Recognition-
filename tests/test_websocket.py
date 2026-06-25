@@ -9,11 +9,14 @@ def test_websocket_missing_token(client):
             assert msg["type"] == "auth_required"
             # Send invalid auth
             websocket.send_json({"type": "auth", "token": "invalid"})
-            websocket.receive_json() # Should disconnect
+            websocket.receive_json()  # Should disconnect
     assert exc.value.code == 1008
 
+
 def test_websocket_valid_token(client):
-    login_response = client.post("/api/v1/auth/login", data={"username": "admin", "password": "password123"})
+    login_response = client.post(
+        "/api/v1/auth/login", data={"username": "admin", "password": "password123"}
+    )
     token = login_response.json()["access_token"]
 
     with client.websocket_connect("/ws/live-asr") as websocket:
@@ -24,8 +27,11 @@ def test_websocket_valid_token(client):
         ok_msg = websocket.receive_json()
         assert ok_msg["type"] == "auth_ok"
 
+
 def test_websocket_audio_chunk_accumulation(client):
-    login_response = client.post("/api/v1/auth/login", data={"username": "admin", "password": "password123"})
+    login_response = client.post(
+        "/api/v1/auth/login", data={"username": "admin", "password": "password123"}
+    )
     token = login_response.json()["access_token"]
 
     with client.websocket_connect("/ws/live-asr") as websocket:

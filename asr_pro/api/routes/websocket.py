@@ -101,27 +101,30 @@ async def websocket_asr_endpoint(websocket: WebSocket):
                 elapsed = time.monotonic() - session_start
 
                 current_text = " ".join(s.text for s in segments)
-                await websocket.send_json({
-                    "type": "transcript",
-                    "status": "success",
-                    "transcript": current_text,
-                    "duration": round(duration, 2),
-                    "session_elapsed": round(elapsed, 1),
-                    "latency_ms": latency_ms,
-                    "segments": [
-                        {"start": s.start, "end": s.end, "text": s.text}
-                        for s in segments
-                    ],
-                })
+                await websocket.send_json(
+                    {
+                        "type": "transcript",
+                        "status": "success",
+                        "transcript": current_text,
+                        "duration": round(duration, 2),
+                        "session_elapsed": round(elapsed, 1),
+                        "latency_ms": latency_ms,
+                        "segments": [
+                            {"start": s.start, "end": s.end, "text": s.text} for s in segments
+                        ],
+                    }
+                )
                 logger.debug(f"WS: transcribed {len(segments)} segs in {latency_ms}ms")
 
             except Exception as exc:
                 logger.warning(f"WS transcription chunk error: {exc}")
-                await websocket.send_json({
-                    "type": "warning",
-                    "status": "warning",
-                    "message": f"Chunk transcription failed: {str(exc)}",
-                })
+                await websocket.send_json(
+                    {
+                        "type": "warning",
+                        "status": "warning",
+                        "message": f"Chunk transcription failed: {str(exc)}",
+                    }
+                )
 
     except WebSocketDisconnect:
         logger.info(f"WS Live-ASR: user '{username}' disconnected.")

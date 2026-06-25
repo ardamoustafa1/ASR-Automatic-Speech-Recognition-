@@ -15,7 +15,9 @@ from asr_pro.db.models import User as DBUser
 router = APIRouter(tags=["auth"])
 
 if not SECRET_KEY:
-    raise RuntimeError("ASR_JWT_SECRET_KEY environment variable is not set. Refusing to start for security reasons.")
+    raise RuntimeError(
+        "ASR_JWT_SECRET_KEY environment variable is not set. Refusing to start for security reasons."
+    )
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 day
@@ -24,13 +26,16 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
+
 class Token(BaseModel):
     access_token: str
     token_type: str
 
+
 class User(BaseModel):
     username: str
     role: str
+
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -42,11 +47,20 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+
 @router.post("/auth/login", response_model=Token)
 @limiter.limit("5/minute")
-async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+async def login_for_access_token(
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
     db_user = db.query(DBUser).filter(DBUser.username == form_data.username).first()
-    if not db_user or not pwd_context.verify(form_data.password, db_user.hashed_password) or not db_user.is_active:
+    if (
+        not db_user
+        or not pwd_context.verify(form_data.password, db_user.hashed_password)
+        or not db_user.is_active
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -55,10 +69,10 @@ async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequ
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": db_user.username, "role": db_user.role},
-        expires_delta=access_token_expires
+        data={"sub": db_user.username, "role": db_user.role}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
@@ -76,14 +90,15 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     except jwt.PyJWTError as err:
         raise credentials_exception from err
 
+
 @router.get("/auth/me", response_model=User)
 async def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
+
 async def require_admin(current_user: User = Depends(get_current_user)):
     if current_user.role != "admin":
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin privileges required"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required"
         )
     return current_user

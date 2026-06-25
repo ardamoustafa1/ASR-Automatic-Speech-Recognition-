@@ -24,7 +24,9 @@ from asr_pro.services.conversation_service import (
     save_conversation_with_analysis,
 )
 
-router = APIRouter(prefix="/conversations", tags=["conversations"], dependencies=[Depends(get_current_user)])
+router = APIRouter(
+    prefix="/conversations", tags=["conversations"], dependencies=[Depends(get_current_user)]
+)
 
 
 @router.get("", response_model=list[ConversationOut])
@@ -44,12 +46,12 @@ def list_conversations(
 
     # ── Single query: aggregate hit counts for all returned conversations ──────
     conv_ids = [c.id for c in convs]
-    hit_count_map: dict[str, int] = dict(db.query(
-            KeywordHit.conversation_id, func.count(KeywordHit.id)
-        )
+    hit_count_map: dict[str, int] = dict(
+        db.query(KeywordHit.conversation_id, func.count(KeywordHit.id))
         .filter(KeywordHit.conversation_id.in_(conv_ids))
         .group_by(KeywordHit.conversation_id)
-        .all())
+        .all()
+    )
 
     return [
         ConversationOut(
@@ -87,10 +89,7 @@ def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
         topics_found = db.query(Topic).filter(Topic.id.in_(topic_ids)).all()
         topic_map = {t.id: t for t in topics_found}
 
-    topic_slugs = {
-        t.slug: {"slug": t.slug, "label_tr": t.label_tr}
-        for t in topic_map.values()
-    }
+    topic_slugs = {t.slug: {"slug": t.slug, "label_tr": t.label_tr} for t in topic_map.values()}
     topics = list(topic_slugs.values())
 
     return ConversationDetail(
@@ -147,7 +146,9 @@ def _process_analysis_background(payload_data: dict, segments_data: list) -> Non
 
 @router.post("/analyze", status_code=202)
 @limiter.limit("60/minute")
-def analyze_conversation(request: Request, payload: AnalyzeSegmentsRequest, background_tasks: BackgroundTasks):
+def analyze_conversation(
+    request: Request, payload: AnalyzeSegmentsRequest, background_tasks: BackgroundTasks
+):
     """Queue a conversation for background NLP analysis (non-blocking)."""
     segments = [
         SegmentInput(
@@ -170,3 +171,31 @@ def analyze_text(request: Request, payload: AnalyzeTextRequest, db: Session = De
     segment = SegmentInput(start=0, end=0, text=payload.text)
     hits = analyze_without_save(db, [segment], sector=payload.sector)
     return {"hits": hits_to_dict(hits), "hit_count": len(hits)}
+
+
+@router.delete("/{conversation_id}")
+def delete_conversation(conversation_id: str, db: Session = Depends(get_db)):
+    """Delete a conversation entirely (GDPR Right to be Forgotten)."""
+    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    db.delete(conv)
+    db.commit()
+    return {"message": "Conversation deleted successfully", "id": conversation_id}
+
+
+@router.get("/{conversation_id}/export")
+def export_conversation(conversation_id: str, db: Session = Depends(get_db)):
+    """Export conversation data (GDPR Right to Data Portability)."""
+    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+        
+    return {
+        "id": conv.id,
+        "full_transcript": conv.full_transcript,
+        "created_at": conv.created_at.isoformat() if conv.created_at else None,
+        "sector": conv.sector,
+        "duration_sec": conv.duration_sec
+    }

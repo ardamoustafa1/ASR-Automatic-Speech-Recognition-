@@ -10,13 +10,26 @@ from dataclasses import dataclass
 from asr_pro.core.keyword_engine import SegmentInput
 from asr_pro.core.sentiment_engine import SentimentClassifier
 
-CHURN_LABELS = ["canceling service", "switching to competitor", "continue service", "neutral complaint"]
+CHURN_LABELS = [
+    "canceling service",
+    "switching to competitor",
+    "continue service",
+    "neutral complaint",
+]
 CHURN_ALARM_THRESHOLD = 0.75
 
 # Example Competitor List for NER Extraction
 COMPETITORS = {
-    "vodafone", "turkcell", "türk telekom", "turk telekom", "superonline",
-    "turknet", "türknet", "aws", "azure", "google cloud"
+    "vodafone",
+    "turkcell",
+    "türk telekom",
+    "turk telekom",
+    "superonline",
+    "turknet",
+    "türknet",
+    "aws",
+    "azure",
+    "google cloud",
 }
 
 
@@ -50,7 +63,9 @@ def _extract_competitors(text: str) -> set[str]:
     return found
 
 
-def analyze_churn_risk(segments: Sequence[SegmentInput], customer_speaker_id: str | None = None) -> ChurnResult:
+def analyze_churn_risk(
+    segments: Sequence[SegmentInput], customer_speaker_id: str | None = None
+) -> ChurnResult:
     """Analyze call transcript with Temporal and Acoustic Stress (WPM) mechanics (Optimized for Speed)."""
     if not segments:
         return ChurnResult(0.0, False, (), (), 0, 0)
@@ -102,11 +117,9 @@ def analyze_churn_risk(segments: Sequence[SegmentInput], customer_speaker_id: st
             # Zaman ağırlığı: Aramanın sonlarına doğru ağırlık artar
             temporal_weight = 1.0 + (0.5 * (idx / max(1, total_segments - 1)))
 
-            chunks.append({
-                "text": chunk_str,
-                "wpm": avg_chunk_wpm,
-                "temporal_weight": temporal_weight
-            })
+            chunks.append(
+                {"text": chunk_str, "wpm": avg_chunk_wpm, "temporal_weight": temporal_weight}
+            )
             current_chunk_text = []
             current_chunk_wpm_sum = 0
             current_chunk_wpm_count = 0
@@ -127,19 +140,23 @@ def analyze_churn_risk(segments: Sequence[SegmentInput], customer_speaker_id: st
         result = classifier.predict(text, labels=CHURN_LABELS, hypothesis=hypothesis)
         score_map = dict(zip(result["labels"], result["scores"]))
 
-        base_risk = score_map.get("canceling service", 0.0) + score_map.get("switching to competitor", 0.0)
+        base_risk = score_map.get("canceling service", 0.0) + score_map.get(
+            "switching to competitor", 0.0
+        )
         final_segment_risk = base_risk * acoustic_multiplier * temporal_weight
 
         if final_segment_risk > 0.3:
-            insights.append(ChurnInsight(
-                text=text,
-                base_risk=round(base_risk, 3),
-                wpm=int(wpm),
-                acoustic_stress_multiplier=acoustic_multiplier,
-                temporal_weight=round(temporal_weight, 3),
-                final_segment_risk=round(final_segment_risk, 3)
-            ))
-            cumulative_risk += (final_segment_risk * 0.6)
+            insights.append(
+                ChurnInsight(
+                    text=text,
+                    base_risk=round(base_risk, 3),
+                    wpm=int(wpm),
+                    acoustic_stress_multiplier=acoustic_multiplier,
+                    temporal_weight=round(temporal_weight, 3),
+                    final_segment_risk=round(final_segment_risk, 3),
+                )
+            )
+            cumulative_risk += final_segment_risk * 0.6
 
     final_risk = min(1.0, cumulative_risk)
 
@@ -154,6 +171,5 @@ def analyze_churn_risk(segments: Sequence[SegmentInput], customer_speaker_id: st
         competitors_mentioned=tuple(sorted(competitors)),
         insights=tuple(insights),
         average_wpm=avg_wpm,
-        transcript_length=total_segments
+        transcript_length=total_segments,
     )
-

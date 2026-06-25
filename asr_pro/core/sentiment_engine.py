@@ -29,9 +29,9 @@ class SentimentResult:
     speaker: str | None
 
 
-
 class SentimentClassifier:
     """Singleton for Lazy Loading the AI Model and Managing Hardware Acceleration."""
+
     _instance: SentimentClassifier | None = None
     _lock = threading.Lock()
 
@@ -51,9 +51,12 @@ class SentimentClassifier:
     def _setup_device(self):
         """Determine the best available hardware accelerator (Apple Silicon MPS, CUDA, or CPU)."""
         import torch
+
         if torch.backends.mps.is_available():
             self._device_str = "mps"
-            logger.info("MPS (Apple Silicon Neural Engine) detected. Hardware acceleration enabled.")
+            logger.info(
+                "MPS (Apple Silicon Neural Engine) detected. Hardware acceleration enabled."
+            )
         elif torch.cuda.is_available():
             self._device_str = "cuda"
             logger.info("CUDA GPU detected. Hardware acceleration enabled.")
@@ -66,12 +69,11 @@ class SentimentClassifier:
         if self._pipeline is None:
             logger.info("Loading Zero-Shot NLP Model (mDeBERTa) into memory...")
             from transformers import pipeline
+
             # We use a robust multilingual zero-shot model for accurate Turkish emotion detection
             model_name = "MoritzLaurer/mDeBERTa-v3-base-mnli-xnli"
             self._pipeline = pipeline(
-                "zero-shot-classification",
-                model=model_name,
-                device=self._device_str
+                "zero-shot-classification", model=model_name, device=self._device_str
             )
             logger.info("Model loaded successfully.")
 
@@ -81,7 +83,7 @@ class SentimentClassifier:
         hypothesis = hypothesis or "The emotion expressed in this text is {}."
 
         if not text or not text.strip():
-            return {"labels": labels, "scores": [1.0] + [0.0]*(len(labels)-1)}
+            return {"labels": labels, "scores": [1.0] + [0.0] * (len(labels) - 1)}
 
         self._load_model()
         return self._pipeline(text, labels, hypothesis_template=hypothesis, multi_label=False)
@@ -93,7 +95,7 @@ def _map_to_category(label: str) -> EmotionCategory:
         "frustrated": "Hayal Kırıklığı",
         "satisfied": "Memnuniyet",
         "anxious": "Endişe",
-        "neutral": "Nötr İletişim"
+        "neutral": "Nötr İletişim",
     }
     return mapping.get(label.lower(), "Nötr İletişim")
 
@@ -104,13 +106,21 @@ def _calculate_scores(labels: list[str], scores: list[float]) -> tuple[float, St
 
     # Calculate a weighted sentiment score based on emotion probabilities
     positive_score = score_map.get("satisfied", 0.0)
-    negative_score = score_map.get("angry", 0.0) + score_map.get("frustrated", 0.0) + score_map.get("anxious", 0.0)
+    negative_score = (
+        score_map.get("angry", 0.0)
+        + score_map.get("frustrated", 0.0)
+        + score_map.get("anxious", 0.0)
+    )
 
     # Range is roughly -1.0 to 1.0
     sentiment = float(positive_score - negative_score)
 
     # Calculate stress
-    high_stress_prob = score_map.get("angry", 0.0) + score_map.get("anxious", 0.0) + (score_map.get("frustrated", 0.0) * 0.5)
+    high_stress_prob = (
+        score_map.get("angry", 0.0)
+        + score_map.get("anxious", 0.0)
+        + (score_map.get("frustrated", 0.0) * 0.5)
+    )
 
     if high_stress_prob > 0.45:
         stress = "Yüksek"
@@ -132,7 +142,7 @@ def analyze_sentiment(segment: SegmentInput) -> SentimentResult:
             stress_level="Normal",
             confidence=1.0,
             segment_index=segment.segment_index,
-            speaker=segment.speaker
+            speaker=segment.speaker,
         )
 
     # 1. Run inference using the Singleton classifier
@@ -153,5 +163,5 @@ def analyze_sentiment(segment: SegmentInput) -> SentimentResult:
         stress_level=stress_level,
         confidence=round(float(best_score), 3),
         segment_index=segment.segment_index,
-        speaker=segment.speaker
+        speaker=segment.speaker,
     )

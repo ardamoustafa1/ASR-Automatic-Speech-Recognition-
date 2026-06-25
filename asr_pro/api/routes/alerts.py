@@ -17,7 +17,9 @@ def list_alert_rules(db: Session = Depends(get_db)):
     return db.query(AlertRule).order_by(AlertRule.name).all()
 
 
-@router.post("/rules", response_model=AlertRuleOut, status_code=201, dependencies=[Depends(require_admin)])
+@router.post(
+    "/rules", response_model=AlertRuleOut, status_code=201, dependencies=[Depends(require_admin)]
+)
 @limiter.limit("20/minute")
 def create_alert_rule(request: Request, payload: AlertRuleCreate, db: Session = Depends(get_db)):
     rule = AlertRule(id=new_uuid(), **payload.model_dump())

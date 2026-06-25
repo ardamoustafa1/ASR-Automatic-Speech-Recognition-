@@ -24,7 +24,13 @@ SEMANTIC_SYNONYMS: dict[str, tuple[str, ...]] = {
     "iptal": ("abonelik iptali", "hattı kapat", "hatti kapat", "sözleşme iptali"),
     "şikayet": ("sikayet", "memnun değilim", "memnun degilim", "kötü hizmet", "kotu hizmet"),
     "iade": ("para iadesi", "geri ödeme", "geri odeme", "refund"),
-    "fatura": ("fatura itirazı", "fatura itirazi", "yanlış yansıma", "yanlis yansima", "fatura hatası"),
+    "fatura": (
+        "fatura itirazı",
+        "fatura itirazi",
+        "yanlış yansıma",
+        "yanlis yansima",
+        "fatura hatası",
+    ),
 }
 
 
@@ -122,7 +128,7 @@ def build_match_sets(keywords: Sequence[str], match_mode: str):
 
 
 def extract_context(text: str, start_idx: int, end_idx: int, window: int = 40) -> str:
-    return (text or "")[max(0, start_idx - window): min(len(text), end_idx + window)].strip()
+    return (text or "")[max(0, start_idx - window) : min(len(text), end_idx + window)].strip()
 
 
 def analyze_segment(
@@ -177,7 +183,7 @@ def analyze_segment(
         for phrase in phrase_terms:
             plen = len(phrase)
             for idx in range(0, max(0, len(tokens) - plen + 1)):
-                if tuple(tokens[idx: idx + plen]) == phrase:
+                if tuple(tokens[idx : idx + plen]) == phrase:
                     matched = " ".join(phrase)
                     add_hit(matched, matched, "phrase", 1.0)
                     covered.update(range(idx, idx + plen))
@@ -193,7 +199,9 @@ def analyze_segment(
                     continue
 
                 if rule.match_mode in ("exact", "semantic") and token == norm_kw:
-                    add_hit(keyword, token, "exact" if rule.match_mode == "exact" else "semantic", 1.0)
+                    add_hit(
+                        keyword, token, "exact" if rule.match_mode == "exact" else "semantic", 1.0
+                    )
                     break
 
                 if rule.match_mode == "fuzzy" and len(norm_kw) >= 3:

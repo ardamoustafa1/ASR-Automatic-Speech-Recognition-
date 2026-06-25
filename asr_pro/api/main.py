@@ -1,4 +1,5 @@
 """FastAPI application entry point — Enterprise ASR-Pro API."""
+
 import os
 import sys
 import uuid
@@ -16,8 +17,10 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 import asyncio
 import time
-from asr_pro.config import TEMP_AUDIO_DIR
+from asr_pro.config import ROOT_DIR
 from asr_pro.db.models import AuditLog
+
+TEMP_AUDIO_DIR = ROOT_DIR / "temp_audio_uploads"
 
 from asr_pro.config import CORS_ORIGINS
 
@@ -26,7 +29,7 @@ trace_id_var: ContextVar[str] = ContextVar("trace_id", default="")
 # ─── Structured logging setup ─────────────────────────────────────────────────
 logger.remove()
 logger.configure(extra={"trace_id": ""})
-if os.getenv("ENV", "dev") == "prod":
+if os.getenv("ASR_ENV", "dev") == "prod":
     logger.add(sys.stdout, serialize=True, level="INFO", backtrace=False, diagnose=False)
 else:
     logger.add(
@@ -57,6 +60,7 @@ from asr_pro.services.seed_data import seed_defaults
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from asr_pro.config import DATA_DIR
+
     DATA_DIR.mkdir(exist_ok=True)
     init_db()
     db = SessionLocal()
@@ -120,10 +124,13 @@ Instrumentator(
 # ─── Middleware ───────────────────────────────────────────────────────────────
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+
 @app.middleware("http")
 async def audit_log_middleware(request: Request, call_next):
     # Only audit log state-changing routes
-    if request.method in ["POST", "PUT", "DELETE", "PATCH"] and request.url.path.startswith("/api/v1/"):
+    if request.method in ["POST", "PUT", "DELETE", "PATCH"] and request.url.path.startswith(
+        "/api/v1/"
+    ):
         response = await call_next(request)
         try:
             db = SessionLocal()
@@ -134,6 +141,7 @@ async def audit_log_middleware(request: Request, call_next):
             if auth.startswith("Bearer "):
                 import jwt
                 from asr_pro.config import JWT_SECRET_KEY
+
                 try:
                     payload = jwt.decode(auth.split(" ")[1], JWT_SECRET_KEY, algorithms=["HS256"])
                     user_id = payload.get("sub")
@@ -144,7 +152,7 @@ async def audit_log_middleware(request: Request, call_next):
                 action=request.method,
                 target_resource=request.url.path,
                 ip_address=ip,
-                details={"status_code": response.status_code}
+                details={"status_code": response.status_code},
             )
             db.add(audit)
             db.commit()
@@ -153,6 +161,7 @@ async def audit_log_middleware(request: Request, call_next):
             logger.error(f"Failed to create audit log: {e}")
         return response
     return await call_next(request)
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -174,8 +183,10 @@ async def security_headers(request: Request, call_next):
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(self), geolocation=()"
-    if os.getenv("ENV") == "prod":
-        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
+    if os.getenv("ASR_ENV") == "prod":
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=63072000; includeSubDomains; preload"
+        )
     return response
 
 

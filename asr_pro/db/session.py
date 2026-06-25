@@ -13,9 +13,11 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
     from asr_pro.config import DATABASE_URL
+
     # In production, we should use Alembic. Only use create_all for SQLite testing.
     if DATABASE_URL.startswith("sqlite"):
         Base.metadata.create_all(bind=engine)
+
 
 def get_db():
     db = SessionLocal()

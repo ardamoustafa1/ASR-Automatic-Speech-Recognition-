@@ -50,12 +50,48 @@ DEFAULT_TOPICS = [
 
 
 DEFAULT_RULES = [
-    {"name": "İptal Tespiti", "slug": "cancellation", "keywords": ["iptal", "abonelik iptali", "hattı kapat"], "severity": "warning", "match_mode": "semantic"},
-    {"name": "Şikayet Tespiti", "slug": "complaint", "keywords": ["şikayet", "sikayet", "memnun değilim"], "severity": "critical", "match_mode": "semantic"},
-    {"name": "Rakip Firma", "slug": "competitor", "keywords": ["vodafone", "turkcell", "türk telekom"], "severity": "info", "match_mode": "exact"},
-    {"name": "Zam Tespiti", "slug": "price_increase", "keywords": ["zam"], "severity": "warning", "match_mode": "semantic"},
-    {"name": "Fatura Tespiti", "slug": "invoice", "keywords": ["fatura", "fatura itirazı", "yanlış yansıma"], "severity": "info", "match_mode": "semantic"},
-    {"name": "İade Tespiti", "slug": "refund", "keywords": ["iade", "para iadesi", "geri ödeme"], "severity": "info", "match_mode": "semantic"},
+    {
+        "name": "İptal Tespiti",
+        "slug": "cancellation",
+        "keywords": ["iptal", "abonelik iptali", "hattı kapat"],
+        "severity": "warning",
+        "match_mode": "semantic",
+    },
+    {
+        "name": "Şikayet Tespiti",
+        "slug": "complaint",
+        "keywords": ["şikayet", "sikayet", "memnun değilim"],
+        "severity": "critical",
+        "match_mode": "semantic",
+    },
+    {
+        "name": "Rakip Firma",
+        "slug": "competitor",
+        "keywords": ["vodafone", "turkcell", "türk telekom"],
+        "severity": "info",
+        "match_mode": "exact",
+    },
+    {
+        "name": "Zam Tespiti",
+        "slug": "price_increase",
+        "keywords": ["zam"],
+        "severity": "warning",
+        "match_mode": "semantic",
+    },
+    {
+        "name": "Fatura Tespiti",
+        "slug": "invoice",
+        "keywords": ["fatura", "fatura itirazı", "yanlış yansıma"],
+        "severity": "info",
+        "match_mode": "semantic",
+    },
+    {
+        "name": "İade Tespiti",
+        "slug": "refund",
+        "keywords": ["iade", "para iadesi", "geri ödeme"],
+        "severity": "info",
+        "match_mode": "semantic",
+    },
 ]
 
 
@@ -125,33 +161,41 @@ def seed_defaults(db: Session) -> None:
     if not admin_user:
         admin_password = os.environ.get("ASR_ADMIN_PASSWORD")
         if not admin_password:
-            if os.getenv("ENV") == "prod":
+            if os.getenv("ASR_ENV") == "prod":
                 raise RuntimeError("ASR_ADMIN_PASSWORD must be set in production.")
             admin_password = secrets.token_urlsafe(16)
-            logger.warning(f"ASR_ADMIN_PASSWORD not set. Generated random admin password: {admin_password}")
-        db.add(User(
-            id=new_uuid(),
-            username="admin",
-            hashed_password=pwd_context.hash(admin_password),
-            role="admin",
-            is_active=True
-        ))
+            logger.warning(
+                f"ASR_ADMIN_PASSWORD not set. Generated random admin password: {admin_password}"
+            )
+        db.add(
+            User(
+                id=new_uuid(),
+                username="admin",
+                hashed_password=pwd_context.hash(admin_password),
+                role="admin",
+                is_active=True,
+            )
+        )
 
     # Agent User Seeding
     agent_user = db.query(User).filter(User.username == "agent").first()
     if not agent_user:
         agent_password = os.environ.get("ASR_AGENT_PASSWORD")
         if not agent_password:
-            if os.getenv("ENV") == "prod":
+            if os.getenv("ASR_ENV") == "prod":
                 raise RuntimeError("ASR_AGENT_PASSWORD must be set in production.")
             agent_password = secrets.token_urlsafe(16)
-            logger.warning(f"ASR_AGENT_PASSWORD not set. Generated random agent password: {agent_password}")
-        db.add(User(
-            id=new_uuid(),
-            username="agent",
-            hashed_password=pwd_context.hash(agent_password),
-            role="agent",
-            is_active=True
-        ))
+            logger.warning(
+                f"ASR_AGENT_PASSWORD not set. Generated random agent password: {agent_password}"
+            )
+        db.add(
+            User(
+                id=new_uuid(),
+                username="agent",
+                hashed_password=pwd_context.hash(agent_password),
+                role="agent",
+                is_active=True,
+            )
+        )
 
     db.commit()

@@ -50,7 +50,9 @@ def classify_topics_from_hits(
 
     for hit in hits:
         norm = normalize_token(hit.keyword)
-        topic = keyword_to_topic.get(norm) or keyword_to_topic.get(normalize_token(hit.matched_text))
+        topic = keyword_to_topic.get(norm) or keyword_to_topic.get(
+            normalize_token(hit.matched_text)
+        )
         if topic and topic.id not in seen:
             seen.add(topic.id)
             results.append(

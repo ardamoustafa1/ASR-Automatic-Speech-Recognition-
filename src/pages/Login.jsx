@@ -7,6 +7,14 @@ export default function LoginPage({ onLogin }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("expired")) {
+      setError("Oturum süreniz doldu veya token geçersiz. Lütfen tekrar giriş yapın.");
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -51,10 +59,15 @@ export default function LoginPage({ onLogin }) {
         </div>
 
         {error && (
-          <div className="chip warn" style={{ textAlign: "center" }}>
+          <div className="chip warn" style={{ textAlign: "center", marginBottom: "1rem" }}>
             {error}
           </div>
         )}
+        
+        <div style={{ background: "rgba(66, 153, 225, 0.1)", padding: "1rem", borderRadius: "8px", fontSize: "0.85rem", color: "var(--asr-accent)", border: "1px solid rgba(66, 153, 225, 0.2)" }}>
+          <strong>İlk Kurulum (Admin Onboarding):</strong><br/>
+          Sisteme ilk kez giriş yapıyorsanız lütfen <code>.env</code> dosyasındaki <code>ASR_ADMIN_PASSWORD</code> bilgisini kullanın. (Varsayılan kullanıcı adı: <code>admin</code>)
+        </div>
 
         <form
           onSubmit={handleSubmit}

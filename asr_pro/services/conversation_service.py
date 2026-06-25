@@ -135,7 +135,9 @@ def save_conversation_with_analysis(
             end=seg.end,
             text=seg.text,
             speaker=seg.speaker or (speakers[idx] if speakers and idx < len(speakers) else None),
-            avg_logprob=getattr(segments_data[idx], "avg_logprob", -1.0) if idx < len(segments_data) else -1.0,
+            avg_logprob=getattr(segments_data[idx], "avg_logprob", -1.0)
+            if idx < len(segments_data)
+            else -1.0,
         )
         db.add(row)
         seg_rows[idx] = row.id
@@ -167,7 +169,12 @@ def save_conversation_with_analysis(
         "conversation_id": conv.id,
         "hits": hits_to_dict(hits),
         "topics": [
-            {"topic_id": t.topic_id, "slug": t.slug, "label_tr": t.label_tr, "confidence": t.confidence}
+            {
+                "topic_id": t.topic_id,
+                "slug": t.slug,
+                "label_tr": t.label_tr,
+                "confidence": t.confidence,
+            }
             for t in topic_matches
         ],
         "hit_count": len(hits),

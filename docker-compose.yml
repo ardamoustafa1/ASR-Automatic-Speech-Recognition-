@@ -52,7 +52,7 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - ./tools/legacy_streamlit/ASR:/app/ASR
+      - ./tools:/app/tools
       - ./asr_pro:/app/asr_pro
       - ./temp_audio_uploads:/app/temp_audio_uploads
       - ./batch_audio_files:/app/batch_audio_files
@@ -67,7 +67,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    command: streamlit run ASR/ASR.py --server.address=0.0.0.0 --server.port=8501
+    command: streamlit run tools/legacy_streamlit/ASR/ASR.py --server.address=0.0.0.0 --server.port=8501
     restart: unless-stopped
 
   command_center:

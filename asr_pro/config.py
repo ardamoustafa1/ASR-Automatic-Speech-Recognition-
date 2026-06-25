@@ -43,15 +43,19 @@ settings = Settings()
 _is_testing = os.getenv("ASR_TEST_NO_MODEL") == "1" or "pytest" in sys.modules
 
 if not settings.jwt_secret_key:
-    if os.getenv("ENV") == "prod":
+    if os.getenv("ASR_ENV") == "prod":
         raise ValueError("ASR_JWT_SECRET_KEY must be set in production environment!")
     else:
         import secrets
-        print("WARNING: ASR_JWT_SECRET_KEY not set. Generating a temporary secret for development.", file=sys.stderr)
+
+        print(
+            "WARNING: ASR_JWT_SECRET_KEY not set. Generating a temporary secret for development.",
+            file=sys.stderr,
+        )
         settings = settings.model_copy(update={"jwt_secret_key": secrets.token_hex(32)})
 
 if not settings.admin_password:
-    pass # Admin password must be provided externally
+    pass  # Admin password must be provided externally
 
 
 # ─── Aliases for backwards compatibility ─────────────────────────────────────

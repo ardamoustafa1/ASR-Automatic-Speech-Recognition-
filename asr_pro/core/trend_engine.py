@@ -18,12 +18,14 @@ class AnomalyAlert:
     increase_percentage: int
     severity: str  # "CRITICAL", "WARNING"
 
+
 @dataclass
 class ForecastResult:
     topic: str
     predicted_volume: int
     trend_slope: float
-    confidence_level: str # "HIGH", "MEDIUM", "LOW"
+    confidence_level: str  # "HIGH", "MEDIUM", "LOW"
+
 
 def init_db():
     _core_init_db()
@@ -31,17 +33,19 @@ def init_db():
         # Sadece gerçek veri kullanılacak, mock data üretimi iptal edildi.
         pass
 
+
 def log_call_trend(topic: str):
     """Yeni biten bir çağrının konusunu hafızaya yazar."""
     with session_scope() as session:
         log_entry = TrendCallLog(topic=topic, call_date=datetime.now())
         session.add(log_entry)
 
+
 def get_trend_data(days: int = 14) -> dict[str, dict[str, int]]:
     """Son X günün topic tabanlı şikayet hacmini getirir. (Streamlit line_chart formatı için idealdir)"""
     init_db()
 
-    start_date = datetime.now().date() - timedelta(days=days-1)
+    start_date = datetime.now().date() - timedelta(days=days - 1)
     dt_start = datetime.combine(start_date, datetime.min.time())
 
     with session_scope() as session:
@@ -59,15 +63,20 @@ def get_trend_data(days: int = 14) -> dict[str, dict[str, int]]:
 
         # Öncelikle tüm tarihleri ve tüm topicleri 0 ile başlat (eksik günleri doldur)
         for i in range(days):
-            d_str = (datetime.now().date() - timedelta(days=days-1-i)).isoformat()
+            d_str = (datetime.now().date() - timedelta(days=days - 1 - i)).isoformat()
             data_by_date[d_str] = {t: 0 for t in all_topics}
 
         for log in logs:
-            d_str = log.call_date.date().isoformat() if hasattr(log.call_date, 'date') else str(log.call_date)[:10]
+            d_str = (
+                log.call_date.date().isoformat()
+                if hasattr(log.call_date, "date")
+                else str(log.call_date)[:10]
+            )
             if d_str in data_by_date:
                 data_by_date[d_str][log.topic] = data_by_date[d_str].get(log.topic, 0) + 1
 
         return data_by_date
+
 
 def detect_anomalies(data_by_date: dict[str, dict[str, int]]) -> list[AnomalyAlert]:
     """Z-Score ve Percentage Spike mantığıyla son 1-2 gündeki patlamaları bulur (Early Warning)."""
@@ -76,9 +85,9 @@ def detect_anomalies(data_by_date: dict[str, dict[str, int]]) -> list[AnomalyAle
 
     dates = sorted(data_by_date.keys())
     if len(dates) < 3:
-        return [] # Yeterli geçmiş yok
+        return []  # Yeterli geçmiş yok
 
-    history_dates = dates[:-2] # Son 2 gün hariç geçmiş
+    history_dates = dates[:-2]  # Son 2 gün hariç geçmiş
     recent_dates = dates[-2:]  # Son 2 gün
 
     if not history_dates:
@@ -103,26 +112,33 @@ def detect_anomalies(data_by_date: dict[str, dict[str, int]]) -> list[AnomalyAle
         increase_pct = ((recent_avg - baseline_avg) / baseline_avg) * 100
 
         if increase_pct >= 100:
-            alerts.append(AnomalyAlert(
-                topic=topic,
-                baseline_avg=round(baseline_avg, 1),
-                recent_count=int(recent_avg),
-                increase_percentage=int(increase_pct),
-                severity="CRITICAL"
-            ))
+            alerts.append(
+                AnomalyAlert(
+                    topic=topic,
+                    baseline_avg=round(baseline_avg, 1),
+                    recent_count=int(recent_avg),
+                    increase_percentage=int(increase_pct),
+                    severity="CRITICAL",
+                )
+            )
         elif increase_pct >= 50:
-            alerts.append(AnomalyAlert(
-                topic=topic,
-                baseline_avg=round(baseline_avg, 1),
-                recent_count=int(recent_avg),
-                increase_percentage=int(increase_pct),
-                severity="WARNING"
-            ))
+            alerts.append(
+                AnomalyAlert(
+                    topic=topic,
+                    baseline_avg=round(baseline_avg, 1),
+                    recent_count=int(recent_avg),
+                    increase_percentage=int(increase_pct),
+                    severity="WARNING",
+                )
+            )
 
     # En yüksek artışa göre sırala
     return sorted(alerts, key=lambda x: x.increase_percentage, reverse=True)
 
-def forecast_tomorrow(data_by_date: dict[str, dict[str, int]], days_to_look_back: int = 7) -> list[ForecastResult]:
+
+def forecast_tomorrow(
+    data_by_date: dict[str, dict[str, int]], days_to_look_back: int = 7
+) -> list[ForecastResult]:
     """
     Doğrusal Regresyon (Linear Regression) ile yarının çağrı hacmini tahmin eder.
     Sadece belirgin bir artış trendi olan (Slope > 0) konuları döndürür.
@@ -151,7 +167,7 @@ def forecast_tomorrow(data_by_date: dict[str, dict[str, int]], days_to_look_back
         sum_xy = sum([x[i] * y[i] for i in range(N)])
 
         # Eğim (Slope / m) formülü
-        denominator = (N * sum_x_sq - sum_x**2)
+        denominator = N * sum_x_sq - sum_x**2
         if denominator == 0:
             continue
 
@@ -164,15 +180,18 @@ def forecast_tomorrow(data_by_date: dict[str, dict[str, int]], days_to_look_back
         # Yalnızca artış trendinde olanları ve anlamlı hacme sahip olanları tahminle
         if m > 0.5 and predicted > 5:
             confidence = "HIGH" if m > 2.0 else "MEDIUM"
-            forecasts.append(ForecastResult(
-                topic=topic,
-                predicted_volume=int(predicted),
-                trend_slope=round(m, 2),
-                confidence_level=confidence
-            ))
+            forecasts.append(
+                ForecastResult(
+                    topic=topic,
+                    predicted_volume=int(predicted),
+                    trend_slope=round(m, 2),
+                    confidence_level=confidence,
+                )
+            )
 
             # En keskin artışa göre sırala
     return sorted(forecasts, key=lambda f: f.trend_slope, reverse=True)
+
 
 @dataclass
 class TrendResult:
@@ -180,6 +199,7 @@ class TrendResult:
     current_count: int
     previous_count: int
     pct_change: float
+
 
 def compute_trend(db, window="7d", topic_id=None, rule_id=None) -> TrendResult:
     """
@@ -210,7 +230,9 @@ def compute_trend(db, window="7d", topic_id=None, rule_id=None) -> TrendResult:
         query = query.filter(KeywordHit.rule_id == rule_id)
 
     current_count = query.filter(KeywordHit.created_at >= current_start).count()
-    previous_count = query.filter(KeywordHit.created_at >= prev_start, KeywordHit.created_at < current_start).count()
+    previous_count = query.filter(
+        KeywordHit.created_at >= prev_start, KeywordHit.created_at < current_start
+    ).count()
 
     pct_change = 0.0
     if previous_count > 0:
@@ -219,7 +241,13 @@ def compute_trend(db, window="7d", topic_id=None, rule_id=None) -> TrendResult:
         pct_change = 100.0
 
     keyword_name = "Belirtilen Kural/Konu"
-    return TrendResult(keyword=keyword_name, current_count=current_count, previous_count=previous_count, pct_change=round(pct_change, 2))
+    return TrendResult(
+        keyword=keyword_name,
+        current_count=current_count,
+        previous_count=previous_count,
+        pct_change=round(pct_change, 2),
+    )
+
 
 def top_keywords(db, limit=5, window="7d"):
     """
@@ -251,6 +279,7 @@ def top_keywords(db, limit=5, window="7d"):
 
     return [{"keyword": r[0], "count": r[1]} for r in results]
 
+
 def dashboard_summary(db, window="7d"):
     """
     Provides a high-level summary of total calls, average risk, and active alerts.
@@ -272,24 +301,28 @@ def dashboard_summary(db, window="7d"):
     conversations = db.query(Conversation).filter(Conversation.created_at >= start_date).all()
     total_calls = len(conversations)
 
-    active_alerts = db.query(AlertEvent).filter(AlertEvent.acknowledged is False, AlertEvent.created_at >= start_date).count()
+    active_alerts = (
+        db.query(AlertEvent)
+        .filter(AlertEvent.acknowledged is False, AlertEvent.created_at >= start_date)
+        .count()
+    )
 
     avg_risk = 0.0
     if total_calls > 0:
         total_risk = sum(
-            c.metadata_json.get("churn_risk", 0.0)
-            for c in conversations
-            if c.metadata_json
+            c.metadata_json.get("churn_risk", 0.0) for c in conversations if c.metadata_json
         )
         avg_risk = total_risk / total_calls
 
     # Also calculate hit counts today
     from asr_pro.db.models import KeywordHit
+
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hits_today = db.query(KeywordHit).filter(KeywordHit.created_at >= today_start).count()
 
     # And get the top rising keyword to display
     from asr_pro.core.trend_engine import detect_anomalies, get_trend_data
+
     alerts = detect_anomalies(get_trend_data(days))
     top_rising = None
     if alerts:
@@ -300,17 +333,29 @@ def dashboard_summary(db, window="7d"):
         "avg_risk": round(avg_risk, 2),
         "active_alerts": active_alerts,
         "hits_today": hits_today,
-        "top_rising_keyword": top_rising
+        "top_rising_keyword": top_rising,
     }
 
-def run_keyword_analysis(segments_data, full_transcription, sector=None, audio_path=None, uploaded_name=None, asr_confidence=0.0, quality_gate_passed=True):
 
+def run_keyword_analysis(
+    segments_data,
+    full_transcription,
+    sector=None,
+    audio_path=None,
+    uploaded_name=None,
+    asr_confidence=0.0,
+    quality_gate_passed=True,
+):
     detected_topics = []
     text_lower = full_transcription.lower()
 
-    if "uygulama" in text_lower and ("çök" in text_lower or "açılmıyor" in text_lower or "hata" in text_lower):
+    if "uygulama" in text_lower and (
+        "çök" in text_lower or "açılmıyor" in text_lower or "hata" in text_lower
+    ):
         detected_topics.append("Mobil Uygulama Çökmesi")
-    if "kargo" in text_lower and ("gelmedi" in text_lower or "gecik" in text_lower or "nerede" in text_lower):
+    if "kargo" in text_lower and (
+        "gelmedi" in text_lower or "gecik" in text_lower or "nerede" in text_lower
+    ):
         detected_topics.append("Kargo Gecikmesi")
     if "ödeme" in text_lower or "kart" in text_lower or "para" in text_lower:
         detected_topics.append("Ödeme Ekranı Hatası")
@@ -325,7 +370,4 @@ def run_keyword_analysis(segments_data, full_transcription, sector=None, audio_p
         except Exception:
             pass  # nosec B110
 
-    return {
-        "topics": detected_topics,
-        "raw_text": full_transcription
-    }
+    return {"topics": detected_topics, "raw_text": full_transcription}

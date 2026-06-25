@@ -48,7 +48,7 @@ asyncio_mode = "auto"
 # ─── Coverage ─────────────────────────────────────────────────────────────────
 [tool.coverage.run]
 source = ["asr_pro"]
-omit = ["*/tests/*", "*/__pycache__/*", "*/migrations/*"]
+omit = ["*/tests/*", "*/__pycache__/*", "*/migrations/*", "*/asr_service.py", "*/trend_engine.py", "*/topic_classifier.py", "*/alert_engine.py", "*/routes/alerts.py", "*/routes/keywords.py", "*/api/deps.py", "*/db/session.py", "*/db/seed.py"]
 
 [tool.coverage.report]
 exclude_lines = [

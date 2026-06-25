@@ -41,7 +41,11 @@ def test_frustration_scenario_from_image():
 @pytest.mark.skipif(not MODEL_AVAILABLE, reason="HuggingFace model required")
 def test_semantic_frustration_no_keywords():
     # This sentence has no obvious lexicon words for anger, just exhaustion/frustration context
-    seg = SegmentInput(start=0, end=5, text="Sürekli aynı şeyleri anlatmaktan yoruldum, bir arpa boyu yol alamadık.")
+    seg = SegmentInput(
+        start=0,
+        end=5,
+        text="Sürekli aynı şeyleri anlatmaktan yoruldum, bir arpa boyu yol alamadık.",
+    )
     result = analyze_sentiment(seg)
 
     assert result.emotion_category in ["Hayal Kırıklığı", "Öfke", "Endişe"]

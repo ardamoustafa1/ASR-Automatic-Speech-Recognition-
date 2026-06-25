@@ -35,7 +35,10 @@ def evaluate_alerts(db: Session) -> list[AlertEvent]:
     for rule in rules:
         if rule.last_triggered_at:
             cooldown = timedelta(minutes=rule.cooldown_minutes)
-            if utcnow() - rule.last_triggered_at.replace(tzinfo=rule.last_triggered_at.tzinfo) < cooldown:
+            if (
+                utcnow() - rule.last_triggered_at.replace(tzinfo=rule.last_triggered_at.tzinfo)
+                < cooldown
+            ):
                 continue
 
         condition = rule.condition or {}
@@ -91,12 +94,13 @@ def _dispatch_webhook(event: AlertEvent) -> None:
 
     try:
         import httpx
+
         payload = {
             "title": event.title,
             "summary": event.summary,
             "severity": event.severity,
             "details": event.payload,
-            "timestamp": event.created_at.isoformat() if event.created_at else None
+            "timestamp": event.created_at.isoformat() if event.created_at else None,
         }
 
         # Fire-and-forget in a background thread or synchronous if timeout is low

@@ -1,4 +1,5 @@
 """API dependencies — database session and rate limiter."""
+
 import jwt
 from fastapi import Request
 from slowapi import Limiter

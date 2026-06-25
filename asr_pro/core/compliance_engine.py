@@ -13,6 +13,7 @@ from asr_pro.core.sentiment_engine import SentimentClassifier
 
 SeverityLevel = Literal["CRITICAL", "HIGH", "MEDIUM"]
 
+
 @dataclass(frozen=True)
 class ComplianceViolation:
     severity: SeverityLevel
@@ -22,47 +23,78 @@ class ComplianceViolation:
     timestamp_start: float
     timestamp_end: float
 
+
 # Yasal Uyumluluk (Red Flag) Kırmızı Çizgi İfadeleri (Sektörlere Göre)
 RED_FLAG_PATTERNS = {
     "finance": {
         "Yanıltıcı Yatırım Vaadi (SPK İhlali)": [
-            "kesin kazandırır", "garanti getiri", "sıfır risk", "zarar etmezsiniz", "kesinlikle düşmez"
+            "kesin kazandırır",
+            "garanti getiri",
+            "sıfır risk",
+            "zarar etmezsiniz",
+            "kesinlikle düşmez",
         ],
         "Veri Gizliliği (KVKK/BDDK İhlali)": [
-            "kredi kartı şifre", "şifrenizi paylaş", "üç haneli güvenlik", "kartınızın arkasındaki"
-        ]
+            "kredi kartı şifre",
+            "şifrenizi paylaş",
+            "üç haneli güvenlik",
+            "kartınızın arkasındaki",
+        ],
     },
     "telecom": {
         "Sözleşme/İptal Engelleme (BTK İhlali)": [
-            "iptal edemezsiniz", "taahhüt bozamazsınız", "çıkış yapamazsınız"
+            "iptal edemezsiniz",
+            "taahhüt bozamazsınız",
+            "çıkış yapamazsınız",
         ],
         "Agresif Ceza Tehdidi": [
-            "cayma bedeli çok yüksek", "ciddi ceza öder", "mahkemelik olursunuz"
-        ]
+            "cayma bedeli çok yüksek",
+            "ciddi ceza öder",
+            "mahkemelik olursunuz",
+        ],
     },
     "health": {
         "Umut Tacirliği / Garanti (Sağlık Bak. İhlali)": [
-            "kesin iyileştir", "yüzde yüz tedavi", "garanti veriyorum", "mucizevi sonuç"
+            "kesin iyileştir",
+            "yüzde yüz tedavi",
+            "garanti veriyorum",
+            "mucizevi sonuç",
         ]
     },
     "insurance": {
-        "Kapsam Saptırma": [
-            "her şeyi karşılar", "hiçbir şart yok", "tüm masrafları biz ödüyoruz"
-        ]
+        "Kapsam Saptırma": ["her şeyi karşılar", "hiçbir şart yok", "tüm masrafları biz ödüyoruz"]
     },
     "general": {
         "Agresif Satış / Etik İhlal": [
-            "hemen almazsanız yanarsınız", "bundan daha iyisini bulamazsın", "sen beni dinle"
+            "hemen almazsanız yanarsınız",
+            "bundan daha iyisini bulamazsın",
+            "sen beni dinle",
         ]
-    }
+    },
 }
 
 # Sahte Alarmları Önleyen Olumsuzluk Kalkanı (False Positive Negators)
-FALSE_POSITIVE_NEGATORS = {"değil", "değildir", "yok", "yoktur", "olmaz", "yasak", "yasaktır", "imkansız", "yapamayız", "vermiyoruz"}
+FALSE_POSITIVE_NEGATORS = {
+    "değil",
+    "değildir",
+    "yok",
+    "yoktur",
+    "olmaz",
+    "yasak",
+    "yasaktır",
+    "imkansız",
+    "yapamayız",
+    "vermiyoruz",
+}
 
 NLP_COMPLIANCE_LABELS = [
-    "misleading promise", "aggressive sales tactic", "asking for password", "denying cancellation", "neutral conversation"
+    "misleading promise",
+    "aggressive sales tactic",
+    "asking for password",
+    "denying cancellation",
+    "neutral conversation",
 ]
+
 
 def _is_negated(text: str, match_index: int, match_length: int) -> bool:
     """Eşleşen ifadenin çevresindeki (3-4 kelime) kelimelere bakarak olumsuzluk eki var mı diye kontrol eder."""
@@ -76,7 +108,8 @@ def _is_negated(text: str, match_index: int, match_length: int) -> bool:
 
     # Noktalama işaretlerini temizleyelim (nokta, virgül vb. kelimeye bitişik kalmasın)
     import string
-    context_window = context_window.translate(str.maketrans('', '', string.punctuation))
+
+    context_window = context_window.translate(str.maketrans("", "", string.punctuation))
 
     context_words = set(context_window.split())
 
@@ -84,6 +117,7 @@ def _is_negated(text: str, match_index: int, match_length: int) -> bool:
     if context_words.intersection(FALSE_POSITIVE_NEGATORS):
         return True
     return False
+
 
 def _fuzzy_match_phrase(pattern: str, text: str) -> tuple[bool, int, int]:
     """ASR (Ses Tanıma) hatalarını affeden Token-Overlap tabanlı esnek eşleşme."""
@@ -103,7 +137,7 @@ def _fuzzy_match_phrase(pattern: str, text: str) -> tuple[bool, int, int]:
     n = len(pattern_words)
     if n > 1 and len(text_words) >= n:
         for i in range(len(text_words) - n + 1):
-            window = text_words[i:i+n]
+            window = text_words[i : i + n]
             # Sırf harf hatası (typo) toleransı için SequenceMatcher ile %85 benzerlik arıyoruz
             similarity = SequenceMatcher(None, " ".join(window), pattern_lower).ratio()
             if similarity > 0.85:
@@ -114,7 +148,10 @@ def _fuzzy_match_phrase(pattern: str, text: str) -> tuple[bool, int, int]:
 
     return False, -1, 0
 
-def analyze_compliance_risk(segments: Sequence[SegmentInput], domain_key: str = "general", use_ai: bool = True) -> list[ComplianceViolation]:
+
+def analyze_compliance_risk(
+    segments: Sequence[SegmentInput], domain_key: str = "general", use_ai: bool = True
+) -> list[ComplianceViolation]:
     """Sıfır Hata Toleranslı Hibrid Uyum Motoru (Fuzzy Matching + Negation Filter + NLP Confidence Gate)."""
     if not segments:
         return []
@@ -140,7 +177,7 @@ def analyze_compliance_risk(segments: Sequence[SegmentInput], domain_key: str = 
                 if is_match:
                     # Eşleşti ama acaba yasal bir uyarı cümlesi mi? (False Positive Check)
                     if _is_negated(text_lower, m_idx, m_len):
-                        continue # Sahte alarm kalkanı devrede! İhlal yok.
+                        continue  # Sahte alarm kalkanı devrede! İhlal yok.
 
                     violations.append(
                         ComplianceViolation(
@@ -149,7 +186,7 @@ def analyze_compliance_risk(segments: Sequence[SegmentInput], domain_key: str = 
                             reason="Kritik yasaklı ifade kullanımı tespit edildi.",
                             segment_text=text.strip(),
                             timestamp_start=seg.start,
-                            timestamp_end=seg.end
+                            timestamp_end=seg.end,
                         )
                     )
                     violation_found_in_segment = True
@@ -161,7 +198,19 @@ def analyze_compliance_risk(segments: Sequence[SegmentInput], domain_key: str = 
         # 2. YAPAY ZEKA (CONTEXTUAL) DENETİMİ (Confidence Gate %80)
         words = text.split()
         if not violation_found_in_segment and use_ai and classifier and len(words) > 5:
-            risk_keywords = ["iptal", "şifre", "sözleşme", "kart", "garanti", "ödeme", "zorunlu", "cezası", "kazanç", "kesin", "risk"]
+            risk_keywords = [
+                "iptal",
+                "şifre",
+                "sözleşme",
+                "kart",
+                "garanti",
+                "ödeme",
+                "zorunlu",
+                "cezası",
+                "kazanç",
+                "kesin",
+                "risk",
+            ]
             if any(k in text_lower for k in risk_keywords):
                 # Sahte alarm olmaması için burada da ön kontrol yap
                 if _is_negated(text_lower, 0, len(text_lower)):
@@ -180,7 +229,7 @@ def analyze_compliance_risk(segments: Sequence[SegmentInput], domain_key: str = 
                             reason="Yapay zeka, temsilcinin cümlesinde yüksek güvenilirlikle yanıltıcı bir vaat tespit etti.",
                             segment_text=text.strip(),
                             timestamp_start=seg.start,
-                            timestamp_end=seg.end
+                            timestamp_end=seg.end,
                         )
                     )
                 elif score_map.get("asking for password", 0.0) > 0.85:
@@ -191,7 +240,7 @@ def analyze_compliance_risk(segments: Sequence[SegmentInput], domain_key: str = 
                             reason="Yapay zeka, müşteriden şifre veya hassas veri istenmiş olabileceğini tespit etti.",
                             segment_text=text.strip(),
                             timestamp_start=seg.start,
-                            timestamp_end=seg.end
+                            timestamp_end=seg.end,
                         )
                     )
 

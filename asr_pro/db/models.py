@@ -29,6 +29,7 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+
 class Conversation(Base):
     __tablename__ = "conversations"
 
@@ -50,7 +51,9 @@ class TranscriptSegmentRow(Base):
     __tablename__ = "transcript_segments"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
-    conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("conversations.id"), index=True)
+    conversation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("conversations.id"), index=True
+    )
     start: Mapped[float] = mapped_column(Float, default=0.0)
     end: Mapped[float] = mapped_column(Float, default=0.0)
     text: Mapped[str] = mapped_column(Text, default="")
@@ -81,7 +84,9 @@ class Topic(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     slug: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     label_tr: Mapped[str] = mapped_column(String(128))
-    parent_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("topics.id"), nullable=True)
+    parent_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("topics.id"), nullable=True
+    )
     seed_keywords: Mapped[list] = mapped_column(JSON, default=list)
     synonyms: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -91,9 +96,15 @@ class KeywordHit(Base):
     __tablename__ = "keyword_hits"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
-    conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("conversations.id"), index=True)
-    segment_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("transcript_segments.id"), nullable=True)
-    rule_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("keyword_rules.id"), nullable=True)
+    conversation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("conversations.id"), index=True
+    )
+    segment_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("transcript_segments.id"), nullable=True
+    )
+    rule_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("keyword_rules.id"), nullable=True
+    )
     topic_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("topics.id"), nullable=True)
     matched_text: Mapped[str] = mapped_column(String(256), default="")
     keyword: Mapped[str] = mapped_column(String(128), default="")
@@ -103,21 +114,27 @@ class KeywordHit(Base):
     speaker: Mapped[str | None] = mapped_column(String(64), nullable=True)
     context_before: Mapped[str] = mapped_column(String(256), default="")
     context_after: Mapped[str] = mapped_column(String(256), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
 
 
 class TrendSnapshot(Base):
     __tablename__ = "trend_snapshots"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
-    rule_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("keyword_rules.id"), nullable=True)
+    rule_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("keyword_rules.id"), nullable=True
+    )
     topic_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("topics.id"), nullable=True)
     keyword: Mapped[str] = mapped_column(String(128), default="")
     hit_count: Mapped[int] = mapped_column(Integer, default=0)
     conversation_count: Mapped[int] = mapped_column(Integer, default=0)
     window: Mapped[str] = mapped_column(String(16), default="7d")
     pct_change_vs_prev: Mapped[float | None] = mapped_column(Float, nullable=True)
-    snapshot_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    snapshot_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
 
 
 class AlertRule(Base):
@@ -131,7 +148,9 @@ class AlertRule(Base):
     channels: Mapped[list] = mapped_column(JSON, default=list)
     cooldown_minutes: Mapped[int] = mapped_column(Integer, default=1440)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    last_triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_triggered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -145,22 +164,28 @@ class AlertEvent(Base):
     severity: Mapped[str] = mapped_column(String(32), default="info")
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
     acknowledged: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
 
 
 class TrendCallLog(Base):
     """Replaces the sqlite3 call_logs table in trend_engine.py for PostgreSQL support."""
+
     __tablename__ = "trend_call_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     topic: Mapped[str] = mapped_column(String(128), index=True)
     call_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
-    user_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True, index=True
+    )
     action: Mapped[str] = mapped_column(String(64), index=True)
     target_resource: Mapped[str | None] = mapped_column(String(128), nullable=True)
     ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)

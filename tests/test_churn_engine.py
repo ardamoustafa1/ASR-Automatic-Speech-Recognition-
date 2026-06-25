@@ -37,7 +37,10 @@ def test_temporal_weighting():
     threat = "Eğer böyle devam ederse başka bir firmaya geçiş yapacağım."
 
     # 10 segments total to force chunking (chunk size is 5)
-    neutral_segs = [SegmentInput(start=i*5, end=(i+1)*5, text="Sadece normal bir cümle.", segment_index=i) for i in range(10)]
+    neutral_segs = [
+        SegmentInput(start=i * 5, end=(i + 1) * 5, text="Sadece normal bir cümle.", segment_index=i)
+        for i in range(10)
+    ]
 
     segments_early = list(neutral_segs)
     segments_early[0] = SegmentInput(start=0, end=5, text=threat, segment_index=0)
@@ -55,7 +58,12 @@ def test_temporal_weighting():
 @pytest.mark.skipif(not MODEL_AVAILABLE, reason="HuggingFace model required")
 def test_competitor_ner():
     # Scenario: Mentioning Vodafone
-    seg = SegmentInput(start=0, end=5, text="Sizin çekim gücünüzden bıktım, yarın Turkcell bayisine gidip hattımı taşıyacağım.", segment_index=0)
+    seg = SegmentInput(
+        start=0,
+        end=5,
+        text="Sizin çekim gücünüzden bıktım, yarın Turkcell bayisine gidip hattımı taşıyacağım.",
+        segment_index=0,
+    )
     result = analyze_churn_risk([seg])
 
     assert "turkcell" in result.competitors_mentioned
@@ -66,7 +74,13 @@ def test_competitor_ner():
 def test_speaker_isolation():
     # Scenario: Agent says "iptal edeceğim" -> Should not trigger churn
     segments = [
-        SegmentInput(start=0, end=5, text="Talebiniz üzerine eski paketinizi iptal edeceğim.", segment_index=0, speaker="SPEAKER_01")
+        SegmentInput(
+            start=0,
+            end=5,
+            text="Talebiniz üzerine eski paketinizi iptal edeceğim.",
+            segment_index=0,
+            speaker="SPEAKER_01",
+        )
     ]
     # We pass "SPEAKER_00" as the customer. The engine should ignore SPEAKER_01.
     result = analyze_churn_risk(segments, customer_speaker_id="SPEAKER_00")

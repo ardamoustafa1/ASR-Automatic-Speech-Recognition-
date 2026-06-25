@@ -22,7 +22,9 @@ def list_rules(db: Session = Depends(get_db)):
     return db.query(KeywordRule).order_by(KeywordRule.name).all()
 
 
-@router.post("", response_model=KeywordRuleOut, status_code=201, dependencies=[Depends(require_admin)])
+@router.post(
+    "", response_model=KeywordRuleOut, status_code=201, dependencies=[Depends(require_admin)]
+)
 @limiter.limit("20/minute")
 def create_rule(request: Request, payload: KeywordRuleCreate, db: Session = Depends(get_db)):
     rule = KeywordRule(id=new_uuid(), **payload.model_dump())
@@ -42,7 +44,9 @@ def get_rule(rule_id: str, db: Session = Depends(get_db)):
 
 @router.patch("/{rule_id}", response_model=KeywordRuleOut, dependencies=[Depends(require_admin)])
 @limiter.limit("20/minute")
-def update_rule(request: Request, rule_id: str, payload: KeywordRuleUpdate, db: Session = Depends(get_db)):
+def update_rule(
+    request: Request, rule_id: str, payload: KeywordRuleUpdate, db: Session = Depends(get_db)
+):
     rule = db.query(KeywordRule).filter(KeywordRule.id == rule_id).first()
     if not rule:
         raise HTTPException(404, "Kural bulunamadı")

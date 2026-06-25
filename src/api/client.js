@@ -12,7 +12,7 @@ async function request(path, options = {}) {
   if (!res.ok) {
     if (res.status === 401) {
       localStorage.removeItem("asr_token");
-      window.location.href = "/";
+      window.location.href = "/?expired=1";
       throw new Error("Unauthorized");
     }
     const err = await res.text();

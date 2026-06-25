@@ -36,6 +36,7 @@ def setup_db():
     yield
     Base.metadata.drop_all(bind=engine)
 
+
 @pytest.fixture
 def db_session(setup_db):
     connection = engine.connect()
@@ -46,6 +47,7 @@ def db_session(setup_db):
     transaction.rollback()
     connection.close()
 
+
 @pytest.fixture
 def client(db_session):
     def override_get_db():
@@ -53,6 +55,7 @@ def client(db_session):
             yield db_session
         finally:
             pass
+
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as c:
         yield c

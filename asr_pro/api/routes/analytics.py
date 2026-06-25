@@ -11,7 +11,9 @@ from asr_pro.api.routes.auth import get_current_user
 from asr_pro.api.schemas.analytics import DashboardOut, TrendOut
 from asr_pro.core.trend_engine import compute_trend, dashboard_summary, top_keywords
 
-router = APIRouter(prefix="/analytics", tags=["analytics"], dependencies=[Depends(get_current_user)])
+router = APIRouter(
+    prefix="/analytics", tags=["analytics"], dependencies=[Depends(get_current_user)]
+)
 
 
 @router.get("/dashboard", response_model=DashboardOut)
@@ -49,7 +51,7 @@ def get_trends(
         "pct_change": trend.pct_change,
         "daily_series": [],
         "anomaly": False,
-        "summary": "Trend hesaplandı."
+        "summary": "Trend hesaplandı.",
     }
 
 
