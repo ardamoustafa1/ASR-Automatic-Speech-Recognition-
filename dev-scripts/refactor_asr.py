@@ -1,13 +1,12 @@
-import sys
 
 def refactor():
-    with open('ASR/ASR.py', 'r', encoding='utf-8') as f:
+    with open('ASR/ASR.py', encoding='utf-8') as f:
         lines = f.readlines()
 
     # Find boundaries based on function names
     logic_start = -1
     ui_start = -1
-    
+
     for i, line in enumerate(lines):
         if line.startswith('def get_ffmpeg_path():') and logic_start == -1:
             logic_start = i
@@ -21,7 +20,7 @@ def refactor():
     # Extract sections
     imports_and_classes = lines[:logic_start]
     logic_section = lines[logic_start:ui_start]
-    
+
     # We also need to split out the Streamlit main code which starts at:
     # "st.set_page_config" or similar, wait let's find main logic
     main_start = -1
@@ -29,7 +28,7 @@ def refactor():
         if "st.set_page_config" in lines[i]:
             main_start = i
             break
-            
+
     if main_start == -1:
         ui_section = lines[ui_start:]
         main_section = []

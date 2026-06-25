@@ -1,8 +1,7 @@
-import re
 
 FILE = "ASR.py"
 
-with open(FILE, "r", encoding="utf-8") as f:
+with open(FILE, encoding="utf-8") as f:
     content = f.read()
 
 # 1. Add `prepared_path` to transcribe_with_profile return

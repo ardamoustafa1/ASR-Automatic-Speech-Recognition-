@@ -1,8 +1,8 @@
 import base64
 import json
-import urllib.request
 import os
 import ssl
+import urllib.request
 
 ssl._create_default_https_context = ssl._create_unverified_context
 

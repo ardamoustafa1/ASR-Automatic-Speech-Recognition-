@@ -1,12 +1,11 @@
-import sys
 
 asr_file = "ASR.py"
 css_file = "new_css.css"
 
-with open(asr_file, "r", encoding="utf-8") as f:
+with open(asr_file, encoding="utf-8") as f:
     lines = f.readlines()
 
-with open(css_file, "r", encoding="utf-8") as f:
+with open(css_file, encoding="utf-8") as f:
     new_css = f.read()
 
 start_idx = -1
@@ -30,7 +29,7 @@ if start_idx != -1 and end_idx != -1:
     new_lines.append(new_css + '\n')
     new_lines.append('    """, unsafe_allow_html=True)\n')
     new_lines.extend(lines[end_idx + 1:])
-    
+
     with open(asr_file, "w", encoding="utf-8") as f:
         f.writelines(new_lines)
     print("CSS successfully replaced!")

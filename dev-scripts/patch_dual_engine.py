@@ -1,8 +1,7 @@
-import os
 
 FILE = "ASR/ASR.py"
 
-with open(FILE, "r", encoding="utf-8") as f:
+with open(FILE, encoding="utf-8") as f:
     content = f.read()
 
 # 1. Insert MLXWhisperWrapper before load_whisper_model
@@ -72,7 +71,7 @@ new_load = '''def load_whisper_model(model_size: str, engine_type: str = "Window
             
         WhisperModel = get_whisper_model_class()
         cpu_threads = max(4, os.cpu_count() or 4)'''
-        
+
 content = content.replace(old_load, new_load)
 
 # 3. Inject hardware_engine radio button in Sidebar

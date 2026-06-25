@@ -1,30 +1,31 @@
-import streamlit as st
-import whisper
 import os
+import re
 import ssl
-import re 
-from pydub import AudioSegment
 import warnings
 from datetime import datetime
+
+import streamlit as st
+import whisper
+from pydub import AudioSegment
 from transformers import pipeline
 
 # --- YAPILANDIRMA ---
 MODEL_SIZE = "medium"  # Doğruluk için 'medium' önerilir.
-LANGUAGE = "tr"      
-TEMP_AUDIO_DIR = "temp_audio_uploads" 
-BATCH_DIR = "batch_audio_files" 
+LANGUAGE = "tr"
+TEMP_AUDIO_DIR = "temp_audio_uploads"
+BATCH_DIR = "batch_audio_files"
 # NLP için Türkçe Toksisite/Duygu Analizi Modeli (Büyük boyutlu olabilir!)
-TOXICITY_CLASSIFIER_MODEL = "savasy/bert-base-turkish-sentiment-cased" 
+TOXICITY_CLASSIFIER_MODEL = "savasy/bert-base-turkish-sentiment-cased"
 # --------------------
 
 # --- KÜFÜR LİSTESİ (Genişletmeyi unutmayın!) ---
-TURKISH_SWEAR_WORDS = [ 
+TURKISH_SWEAR_WORDS = [
     "lan", "aptal", "salak", "gerizekalı", "şerefsiz", "piç", "siktir","hassiktir", "pezevenk", "orospu", "mal", "dangalak", "ayı", "eşek","amına","koyayım","ahlaksız",
     "hanzo","bacaksız", "çapsız", "düzenbaz","zibidi", "meymenetsiz", "uyuz", "lavuk", "dallama", "nankör",
     "açgözlü", "basitsin", "korkak", "serseri", "cahil", "gavur", "hain", "kukla", "soytarı", "şebek", "yalancı",
     "şerefsiz", "haysiyetsiz", "namussuz","orospu","pezevenk","ibne","gavat","dümbük","deyyus","dallama","yavşak","Gerizekalı","aptal","salak","beyinsiz","embesil",
     "ahmak","beyinli","bunak","Hırsız","dolandırıcı","sahtekar","rüşvetçi","tecavüzcü","sapık","ayyaş","hapçı","haini","terörist","şarlatan","soytarı","müfteri",
-    "üçkağıtçı","şaklaban","Kaşar","sürtük","eskort","pavyon","boynuzlu","Köpek","it","eşek","domuz","hayvan","çakal","sırtlan","akbaba","kene","kuduz", 
+    "üçkağıtçı","şaklaban","Kaşar","sürtük","eskort","pavyon","boynuzlu","Köpek","it","eşek","domuz","hayvan","çakal","sırtlan","akbaba","kene","kuduz",
     "maymun","gergedan","dana","şaşı","kel","kambur","cüce","şişko","dombili","Münafık","dinsiz","imansız","godoş","mason","ataput","soytarısı",
     "deccal","nemrut","pis gavur","yobaz","pis","sikerim","sikcek"
 ]
@@ -58,7 +59,7 @@ def load_toxicity_classifier():
     """NLP sınıflandırıcısını yükler (Sadece bir kere)."""
     try:
         classifier = pipeline(
-            "sentiment-analysis", 
+            "sentiment-analysis",
             model=TOXICITY_CLASSIFIER_MODEL,
             tokenizer=TOXICITY_CLASSIFIER_MODEL,
             return_all_scores=True
@@ -76,19 +77,19 @@ nlp_classifier = load_toxicity_classifier()
 # --- ZAMAN DAMGALI TRANSKRİPSİYON & KÜFÜR TESPİTİ FONKSİYONU ---
 def transcribe_audio_file(model, file_path: str, lang: str, swear_list: list) -> tuple:
     """Ses dosyasını tanır ve sonuçları döndürür."""
-    
+
     result = model.transcribe(
         file_path,
         language=lang,
         word_timestamps=True,
         # Ses kalitesi için deneme parametreleri
-        no_speech_threshold=0.35, 
-        logprob_threshold=-0.9   
+        no_speech_threshold=0.35,
+        logprob_threshold=-0.9
     )
 
     formatted_text = ""
     detected_swears = []
-    
+
     # 1. Segment Bazlı Çıktı Oluşturma
     formatted_text += "--- 1. Segment Bazlı Çıktı ---\n"
     for segment in result["segments"]:
@@ -96,23 +97,23 @@ def transcribe_audio_file(model, file_path: str, lang: str, swear_list: list) ->
         end_time = segment["end"]
         text = segment["text"]
         formatted_text += f"[{start_time:.2f}s - {end_time:.2f}s]: {text.strip()}\n"
-    
+
     formatted_text += "\n--- 2. Kelime Bazlı Çıktı ---\n"
     word_list = []
     for segment in result["segments"]:
         if "words" in segment:
             word_list.extend(segment["words"])
-    
+
     current_line = ""
-    LINE_LENGTH_LIMIT = 80 
-    
+    LINE_LENGTH_LIMIT = 80
+
     for word_data in word_list:
         start_time = word_data["start"]
         word = word_data["word"].strip()
-        
+
         # Sadece harf ve sayıları bırakarak kelimeyi temizle
         clean_word = re.sub(r'[^\w]', '', word.lower())
-        
+
         # *** KÜFÜR TESPİTİ BÖLÜMÜ ***
         if clean_word in swear_list:
             detected_swears.append({
@@ -120,22 +121,22 @@ def transcribe_audio_file(model, file_path: str, lang: str, swear_list: list) ->
                 "time": start_time
             })
             # Tespit edilen kelimeyi çıktıda **vurgula**
-            word_with_timestamp = f"({start_time:.2f}s) **{word}** " 
+            word_with_timestamp = f"({start_time:.2f}s) **{word}** "
         else:
             word_with_timestamp = f"({start_time:.2f}s){word} "
-        
+
         # Çıktı formatlama
         if len(current_line) + len(word_with_timestamp) > LINE_LENGTH_LIMIT:
             formatted_text += current_line.strip() + "\n"
             current_line = ""
-        
+
         current_line += word_with_timestamp
-        
+
     formatted_text += current_line.strip()
-    
+
     # NLP analizi için tüm metin
     full_transcription = result["text"]
-    
+
     return formatted_text, detected_swears, full_transcription
 
 # --- NLP TOKSİSİTE ANALİZ FONKSİYONU ---
@@ -143,10 +144,10 @@ def analyze_toxicity(text: str, classifier):
     """Metnin saldırganlık/toksisite skorunu hesaplar."""
     if not classifier or not text.strip():
         return "Analiz Yapılamadı", 0.0
-    
+
     # Metni model için uygun hale getir (Çok uzun metinler için kesme)
     max_len = 512
-    if len(text) > max_len * 2: 
+    if len(text) > max_len * 2:
         input_text = text[:max_len] + " [SEP] " + text[-max_len:]
     else:
         input_text = text
@@ -155,22 +156,22 @@ def analyze_toxicity(text: str, classifier):
         results = classifier(input_text)
         negative_score = 0
         positive_score = 0
-        
+
         for item in results[0]:
             if 'negative' in item['label'].lower():
                 negative_score = item['score']
             elif 'positive' in item['label'].lower():
                 positive_score = item['score']
-            
+
         if negative_score > 0.7 and negative_score > positive_score:
             toxicity_label = "Yüksek Negatif/Toksik"
         elif negative_score > 0.5:
             toxicity_label = "Orta Negatif"
         else:
             toxicity_label = "Düşük Negatif/Nötr"
-            
+
         return toxicity_label, negative_score
-        
+
     except Exception:
         return "NLP Hata", 0.0
 
@@ -186,7 +187,7 @@ def display_detection_results(detected_swears, col_display):
 # --- STREAMLIT ARAYÜZ ---
 st.set_page_config(layout="wide")
 st.title("🎙️ Lokal Whisper ASR - Gelişmiş Analiz Aracı")
-st.markdown(f"**Gizlilik Uyarısı:** Tüm işlemler yerel sunucunuzda gerçekleşmektedir.")
+st.markdown("**Gizlilik Uyarısı:** Tüm işlemler yerel sunucunuzda gerçekleşmektedir.")
 
 mode = st.sidebar.radio(
     "İşlem Modunu Seçin:",
@@ -197,7 +198,7 @@ mode = st.sidebar.radio(
 # --- TEKLİ DOSYA İŞLEME ---
 # --------------------------
 if mode == "Tekli Dosya Yükleme":
-    
+
     st.header("1. Tek Dosya İşleme")
     col1, col2 = st.columns([1, 2])
 
@@ -219,7 +220,7 @@ if mode == "Tekli Dosya Yükleme":
 
     with col2:
         st.header("2. Sonuçlar (Zaman Damgası, Küfür & NLP)")
-        swear_display_placeholder = st.empty() 
+        swear_display_placeholder = st.empty()
         nlp_display_placeholder = st.empty()
 
         if audio_path is not None:
@@ -227,10 +228,10 @@ if mode == "Tekli Dosya Yükleme":
                 with st.spinner("⏳ Ses dosyası tanınıyor..."):
                     try:
                         formatted_text, detected_swears, full_transcription = transcribe_audio_file(model, audio_path, LANGUAGE, TURKISH_SWEAR_WORDS)
-                        
+
                         # Küfür Tespiti Sonucu
                         display_detection_results(detected_swears, swear_display_placeholder)
-                        
+
                         # NLP Analizi Sonucu
                         toxicity_label, negative_score = analyze_toxicity(full_transcription, nlp_classifier)
                         if toxicity_label != "Analiz Yapılamadı" and toxicity_label != "NLP Hata":
@@ -241,7 +242,7 @@ if mode == "Tekli Dosya Yükleme":
 
                         st.success("✅ Tanıma Tamamlandı! (Metinde vurgulandı)")
                         st.markdown("**Zaman Damgalı Sonuçlar:**")
-                        st.code(formatted_text, language='markdown') 
+                        st.code(formatted_text, language='markdown')
 
                         st.download_button(
                             label="📄 Metni İndir (.txt)",
@@ -260,7 +261,7 @@ if mode == "Tekli Dosya Yükleme":
 # --- TOPLU KLASÖR İŞLEME ---
 # --------------------------
 elif mode == "Toplu Klasör İşleme (Batch)":
-    
+
     st.header("1. Toplu İşleme")
     st.warning(f"⚠️ **DİKKAT:** Dosyalarınız burada olmalıdır: `{BATCH_DIR}`")
 
@@ -283,24 +284,24 @@ elif mode == "Toplu Klasör İşleme (Batch)":
                     try:
                         with open(OUTPUT_BATCH_FILENAME, "w", encoding="utf-8") as f:
                             f.write(f"--- Toplu Whisper ASR ve Gelişmiş Analiz Sonuçları ---\nModel: {MODEL_SIZE}, NLP Model: {TOXICITY_CLASSIFIER_MODEL}\nBaşlangıç: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-                            
+
                             progress_bar = st.progress(0)
-                            
+
                             for i, file_path in enumerate(audio_files):
                                 file_name = os.path.basename(file_path)
                                 st.info(f"({i+1}/{len(audio_files)}) İşleniyor: {file_name}...")
-                                
+
                                 formatted_text, detected_swears, full_transcription = transcribe_audio_file(model, file_path, LANGUAGE, TURKISH_SWEAR_WORDS)
                                 total_detected_swears += len(detected_swears)
-                                
+
                                 # NLP Analizi
                                 toxicity_label, negative_score = analyze_toxicity(full_transcription, nlp_classifier)
-                                
+
                                 # Dosyaya Yazma Başlıkları
-                                f.write(f"\n========================================\n")
+                                f.write("\n========================================\n")
                                 f.write(f"### DOSYA: {file_name} ###\n")
-                                f.write(f"========================================\n")
-                                
+                                f.write("========================================\n")
+
                                 # Küfür Raporu
                                 if detected_swears:
                                     f.write(f"🚨 TESPİT EDİLEN UYGUNSUZ İFADE SAYISI: {len(detected_swears)}\n")
@@ -310,24 +311,24 @@ elif mode == "Toplu Klasör İşleme (Batch)":
                                     f.write("🎉 Uygunsuz ifade tespit edilmedi.\n")
 
                                 # NLP Raporu
-                                f.write(f"\n--- NLP Toksisite Analizi ---\n")
+                                f.write("\n--- NLP Toksisite Analizi ---\n")
                                 if toxicity_label != "Analiz Yapılamadı" and toxicity_label != "NLP Hata":
                                     f.write(f"Sınıflandırma: {toxicity_label}\n")
                                     f.write(f"Negatif Skor: %{negative_score * 100:.2f}\n")
                                     if "Negatif" in toxicity_label:
-                                        f.write(f"*** YÜKSEK SALDIRGANLIK/NEGATİFLİK TESPİT EDİLDİ ***\n")
+                                        f.write("*** YÜKSEK SALDIRGANLIK/NEGATİFLİK TESPİT EDİLDİ ***\n")
                                 else:
                                      f.write("NLP Analizi yapılamadı (Model Yükleme Hatası).\n")
 
-                                f.write(f"\n--- Zaman Damgalı Metin ---\n")
+                                f.write("\n--- Zaman Damgalı Metin ---\n")
                                 f.write(formatted_text + "\n")
-                                
+
                                 progress = (i + 1) / len(audio_files)
                                 progress_bar.progress(progress)
 
                         st.success(f"✅ Toplu işlem tamamlandı! Toplam {total_detected_swears} uygunsuz ifade bulundu.")
-                        
-                        with open(OUTPUT_BATCH_FILENAME, "r", encoding="utf-8") as f:
+
+                        with open(OUTPUT_BATCH_FILENAME, encoding="utf-8") as f:
                             batch_data = f.read()
                             st.download_button(
                                 label="⬇️ Toplu Sonuçları İndir (Tüm Analizler)",
@@ -335,6 +336,6 @@ elif mode == "Toplu Klasör İşleme (Batch)":
                                 file_name=OUTPUT_BATCH_FILENAME,
                                 mime="text/plain"
                             )
-                        
+
                     except Exception as e:
                         st.error(f"❌ Toplu işleme sırasında kritik bir hata oluştu: {e}")
