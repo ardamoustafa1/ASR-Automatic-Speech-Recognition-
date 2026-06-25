@@ -23,9 +23,9 @@ spec:
               containerPort: 8000
               protocol: TCP
           env:
-            - name: DATABASE_URL
+            - name: ASR_DATABASE_URL
               value: {{ .Values.env.databaseUrl }}
-            - name: JWT_SECRET_KEY
+            - name: ASR_JWT_SECRET_KEY
               valueFrom:
                 secretKeyRef:
                   name: asr-pro-secrets
