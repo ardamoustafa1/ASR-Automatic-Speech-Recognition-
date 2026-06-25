@@ -965,7 +965,7 @@ def render_app():
         translate_mode = st.checkbox("Çeviri Modu", value=True, help="Türkçe konuşmayı İngilizce'ye çevirerek yazar.")
         enable_nlp = st.checkbox("Toksisite Analizi", value=True, help="Metin toksisite analizi yapar (ek işlem süresi gerektirir).")
         enable_wordcloud = st.checkbox("Kelime Bulutu", value=True, help="Kapalıyken sonuç ekranı daha hızlı açılır.")
-        diarization_mode = st.checkbox("Konuşmacı Ayrımı", value=True, help="Konuşmacıları A/B olarak ayırır (HF Token Gerekli).")
+        diarization_mode = st.checkbox("Konuşmacı Ayrımı", value=False, help="Konuşmacıları A/B olarak ayırır (HF Token Gerekli).")
         reference_text = st.text_area(
             "Referans Metin (WER)",
             value="",
@@ -1672,7 +1672,7 @@ def render_app():
             audio_files = [os.path.join(BATCH_DIR, f) for f in os.listdir(BATCH_DIR) if f.endswith(('.mp3', '.wav', '.m4a', '.flac'))]
 
             if not audio_files:
-                st.warning("Klasörde veya yüklenenler arasında ses dosyası bulunamadı.")
+                st.info("Klasörde veya yüklenenler arasında ses dosyası bulunamadı.")
             else:
                 st.success(f"{len(audio_files)} dosya kuyrukta bekliyor.")
 
@@ -1820,7 +1820,7 @@ def render_app():
             import pandas as pd
             if trend_data:
                 df = pd.DataFrame.from_dict(trend_data, orient='index')
-                if not df.empty and not df.columns.empty and df.sum().sum() > 0:
+                if not df.empty and not df.columns.empty and len(df) > 1 and df.sum().sum() > 0:
                     st.line_chart(df, height=400)
                 else:
                     st.info("Henüz görüntülenecek trend verisi bulunmuyor.")
