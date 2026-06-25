@@ -32,14 +32,14 @@ curl -X POST "http://localhost:8000/api/v1/auth/login" \
 
 ### 1. Analyze Audio File
 
-**Endpoint:** `POST /analyze/audio`
+**Endpoint:** `POST /api/v1/conversations/analyze`
 Upload an audio file to get the transcription and NLP analysis.
 
 **Python Example:**
 ```python
 import requests
 
-url = "http://localhost:8000/api/v1/analyze/audio"
+url = "http://localhost:8000/api/v1/conversations/analyze"
 headers = {"Authorization": "Bearer YOUR_JWT_TOKEN"}
 files = {"file": open("test_audio.wav", "rb")}
 data = {"sector": "banking"}
