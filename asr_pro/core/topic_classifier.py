@@ -1,11 +1,12 @@
 from __future__ import annotations
+
 """Lightweight topic classification from keyword hits and seed synonyms."""
 
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
-from asr_pro.core.keyword_engine import KeywordHitResult, SEMANTIC_SYNONYMS, normalize_token
+from asr_pro.core.keyword_engine import SEMANTIC_SYNONYMS, KeywordHitResult, normalize_token
 
 
 @dataclass(frozen=True)

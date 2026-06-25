@@ -1,4 +1,5 @@
 from typing import Optional
+
 """WebSocket route for Live ASR streaming.
 
 Security: JWT is validated from the FIRST WebSocket message (not the URL query string),

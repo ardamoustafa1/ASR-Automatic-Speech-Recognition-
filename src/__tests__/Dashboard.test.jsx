@@ -2,7 +2,6 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import { vi } from "vitest";
 import Dashboard from "../pages/Dashboard";
-import { api } from "../api/client";
 
 // Mock the API
 vi.mock("../api/client", () => ({

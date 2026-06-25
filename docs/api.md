@@ -64,20 +64,28 @@ print(response.json())
 
 ### 2. Live ASR WebSocket
 
-**Endpoint:** `WS /ws/live-asr?token=YOUR_JWT_TOKEN`
-Streams audio chunks and returns live transcription deltas.
+**Endpoint:** `WS /ws/live-asr`
+Streams audio chunks and returns live transcription deltas. Uses initial JSON payload for authentication.
 
 **JavaScript Example:**
 ```javascript
-const socket = new WebSocket(`ws://localhost:8000/ws/live-asr?token=${token}`);
+const socket = new WebSocket("ws://localhost:8000/ws/live-asr");
+
+socket.onopen = () => {
+    // Send auth message first
+    socket.send(JSON.stringify({ type: "auth", token: "YOUR_JWT_TOKEN" }));
+};
 
 socket.onmessage = (event) => {
     const data = JSON.parse(event.data);
-    console.log("Current Transcript: ", data.transcript);
+    if (data.type === "auth_ok") {
+        console.log("Authenticated. You can now send audio blobs.");
+        // Send audio chunks (e.g. from MediaRecorder)
+        // socket.send(audioBlob);
+    } else if (data.type === "transcript") {
+        console.log("Current Transcript: ", data.transcript);
+    }
 };
-
-// Send audio chunks (e.g. from MediaRecorder)
-socket.send(audioBlob);
 ```
 
 ### 3. Get Conversations

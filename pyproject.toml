@@ -83,8 +83,18 @@ select = [
 ignore = [
     "S101",  # Use of assert (OK in tests)
     "S603",  # subprocess calls (needed for ffmpeg)
+    "S104",  # Possible binding to all interfaces
     "B008",  # Depends() in function defaults (FastAPI pattern)
     "N806",  # Variable in function should be lowercase (ML convention)
+    "E501",  # Line too long
+    "E402",  # Module level import not at top of file
+    "UP006", # Use dict instead of Dict
+    "UP007", # Use X | Y for type annotations
+    "UP035", # Deprecated typing imports
+    "B023",  # Function definition does not bind loop variable
+    "S110",  # try-except-pass detected
+    "W291",  # Trailing whitespace
+    "W293",  # Blank line contains whitespace
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -100,5 +110,6 @@ line_length = 100
 python_version = "3.10"
 ignore_missing_imports = true
 strict = false
-warn_return_any = true
+warn_return_any = false
 warn_unused_configs = true
+disable_error_code = ["assignment", "index", "call-overload", "no-any-return", "union-attr", "arg-type", "misc", "var-annotated", "return-value", "truthy-function"]

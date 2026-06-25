@@ -1,12 +1,13 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from asr_pro.api.routes.auth import require_admin
 
-from asr_pro.api.deps import get_db
-from asr_pro.api.schemas.alerts import AlertRuleCreate, AlertRuleOut, AlertEventOut
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.orm import Session
+
+from asr_pro.api.deps import get_db, limiter
+from asr_pro.api.routes.auth import require_admin
+from asr_pro.api.schemas.alerts import AlertEventOut, AlertRuleCreate, AlertRuleOut
 from asr_pro.core.alert_engine import evaluate_alerts
-from asr_pro.db.models import AlertRule, AlertEvent, new_uuid
+from asr_pro.db.models import AlertEvent, AlertRule, new_uuid
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
@@ -17,7 +18,8 @@ def list_alert_rules(db: Session = Depends(get_db)):
 
 
 @router.post("/rules", response_model=AlertRuleOut, status_code=201, dependencies=[Depends(require_admin)])
-def create_alert_rule(payload: AlertRuleCreate, db: Session = Depends(get_db)):
+@limiter.limit("20/minute")
+def create_alert_rule(request: Request, payload: AlertRuleCreate, db: Session = Depends(get_db)):
     rule = AlertRule(id=new_uuid(), **payload.model_dump())
     db.add(rule)
     db.commit()
@@ -47,7 +49,8 @@ def list_alerts(acknowledged: Optional[bool] = None, db: Session = Depends(get_d
 
 
 @router.patch("/{alert_id}/acknowledge", dependencies=[Depends(require_admin)])
-def acknowledge_alert(alert_id: str, db: Session = Depends(get_db)):
+@limiter.limit("20/minute")
+def acknowledge_alert(request: Request, alert_id: str, db: Session = Depends(get_db)):
     event = db.query(AlertEvent).filter(AlertEvent.id == alert_id).first()
     if not event:
         raise HTTPException(404, "Uyarı bulunamadı")
@@ -57,7 +60,8 @@ def acknowledge_alert(alert_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/evaluate", dependencies=[Depends(require_admin)])
-def run_alert_evaluation(db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def run_alert_evaluation(request: Request, db: Session = Depends(get_db)):
     events = evaluate_alerts(db)
     db.commit()
     return {"triggered": len(events), "events": [e.title for e in events]}

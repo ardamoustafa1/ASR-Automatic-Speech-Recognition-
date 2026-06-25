@@ -1,0 +1,80 @@
+...........F.....................................................        [100%]
+=================================== FAILURES ===================================
+________________________ test_create_keyword_rule_agent ________________________
+
+client = <starlette.testclient.TestClient object at 0x118321480>
+
+    def test_create_keyword_rule_agent(client):
+        login_response = client.post("/api/v1/auth/login", data={"username": "agent", "password": "password123"})
+>       token = login_response.json()["access_token"]
+E       KeyError: 'access_token'
+
+tests/test_api_routes.py:18: KeyError
+---------------------------- Captured stdout setup -----------------------------
+[32m2026-06-25 21:48:36[0m | [1mINFO[0m | [36masr_pro.api.main[0m | [35m[][0m | Database seeding complete.
+[32m2026-06-25 21:48:36[0m | [1mINFO[0m | [36masr_pro.api.main[0m | [35m[][0m | Cache: Using in-memory cache (set ASR_REDIS_URL for Redis)
+----------------------------- Captured stdout call -----------------------------
+[32m2026-06-25 21:48:36[0m | [34m[1mDEBUG[0m | [36masr_pro.api.main[0m | [35m[3f4af395-2efd-4a22-a1fc-b22ac1b7d90e][0m | → POST /api/v1/auth/login
+[32m2026-06-25 21:48:36[0m | [33m[1mWARNING[0m | [36masr_pro.api.main[0m | [35m[3f4af395-2efd-4a22-a1fc-b22ac1b7d90e][0m | ← POST /api/v1/auth/login [401]
+--------------------------- Captured stdout teardown ---------------------------
+[32m2026-06-25 21:48:36[0m | [1mINFO[0m | [36masr_pro.api.main[0m | [35m[][0m | ASR-Pro API shutdown.
+=============================== warnings summary ===============================
+../../../../Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/fastapi/testclient.py:1
+  /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+../../../../Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/slowapi/extension.py:720
+../../../../Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/slowapi/extension.py:720
+../../../../Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/slowapi/extension.py:720
+  /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/slowapi/extension.py:720: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    if asyncio.iscoroutinefunction(func):
+
+../../../../Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/pytest_asyncio/plugin.py:179: 3704 warnings
+  /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/pytest_asyncio/plugin.py:179: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    return asyncio.iscoroutinefunction(obj) or inspect.isasyncgenfunction(obj)
+
+../../../../Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/pytest_asyncio/plugin.py:450: 65 warnings
+  /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/pytest_asyncio/plugin.py:450: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    return asyncio.iscoroutinefunction(func)
+
+tests/test_api_integration.py::test_get_conversations_empty
+  /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/pytest_asyncio/plugin.py:1056: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    return asyncio.get_event_loop_policy()
+
+tests/test_api_integration.py: 7 warnings
+tests/test_api_routes.py: 1 warning
+tests/test_auth.py: 2 warnings
+tests/test_websocket.py: 2 warnings
+  /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/jwt/api_jwt.py:153: InsecureKeyLengthWarning: The HMAC key is 11 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    return self._jws.encode(
+
+tests/test_api_integration.py: 6 warnings
+tests/test_api_routes.py: 1 warning
+tests/test_auth.py: 1 warning
+tests/test_websocket.py: 2 warnings
+  /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/jwt/api_jwt.py:371: InsecureKeyLengthWarning: The HMAC key is 11 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    decoded = self.decode_complete(
+
+tests/test_api_integration.py::test_post_analyze_conversation
+  /Users/ardamoustafa/Desktop/ASR-Automatic-Speech-Recognition--main/asr_pro/api/routes/conversations.py:163: PydanticDeprecatedSince20: The `dict` method is deprecated; use `model_dump` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    background_tasks.add_task(_process_analysis_background, payload.dict(), segments)
+
+tests/test_api_integration.py::test_post_analyze_conversation
+tests/test_api_integration.py::test_post_analyze_conversation
+tests/test_api_integration.py::test_post_analyze_conversation
+tests/test_api_integration.py::test_post_analyze_conversation
+tests/test_api_integration.py::test_post_analyze_conversation
+tests/test_api_integration.py::test_post_analyze_conversation
+tests/test_api_integration.py::test_post_analyze_conversation
+  /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/torch/jit/_script.py:1474: DeprecationWarning: `torch.jit.script` is not supported in Python 3.14+ and may break. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+tests/test_api_integration.py::test_post_analyze_conversation
+  <frozen importlib._bootstrap>:491: DeprecationWarning: builtin type SwigPyPacked has no __module__ attribute
+
+tests/test_api_integration.py::test_post_analyze_conversation
+  <frozen importlib._bootstrap>:491: DeprecationWarning: builtin type SwigPyObject has no __module__ attribute
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_api_routes.py::test_create_keyword_rule_agent - KeyError: '...

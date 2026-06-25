@@ -7,6 +7,8 @@ import {
   AlertTriangle,
   Brain,
   ShieldCheck,
+  Copy,
+  Trash2,
 } from "lucide-react";
 import { api } from "../api/client";
 
@@ -274,7 +276,10 @@ export default function LiveASRPage() {
                   marginBottom: "0.75rem",
                 }}
               >
-                {analyzing ? "⏳ Analiz ediliyor..." : "🔍 Anlık Analiz"}
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  {analyzing ? <Activity size={14} style={{ animation: "pulse 1.5s infinite" }} /> : <Activity size={14} />}
+                  {analyzing ? "Analiz ediliyor..." : "Anlık Analiz"}
+                </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem" }}>
                 <ScoreBadge
@@ -308,7 +313,10 @@ export default function LiveASRPage() {
                     color: "var(--asr-danger)",
                   }}
                 >
-                  <strong>🚨 Eşleşme:</strong> "{topHit.matched_text}" — {topHit.rule_name}
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <AlertTriangle size={14} />
+                    <strong>Eşleşme:</strong> "{topHit.matched_text}" — {topHit.rule_name}
+                  </div>
                 </div>
               )}
             </div>
@@ -371,9 +379,9 @@ export default function LiveASRPage() {
               <button
                 className="btn-secondary"
                 onClick={() => navigator.clipboard.writeText(transcript)}
-                style={{ fontSize: "0.8rem", padding: "0.4rem 0.8rem" }}
+                style={{ fontSize: "0.8rem", padding: "0.4rem 0.8rem", display: "flex", alignItems: "center", gap: "0.5rem" }}
               >
-                📋 Kopyala
+                <Copy size={14} /> Kopyala
               </button>
               <button
                 className="btn-secondary"
@@ -382,9 +390,9 @@ export default function LiveASRPage() {
                   setAnalysis(null);
                   transcriptRef.current = "";
                 }}
-                style={{ fontSize: "0.8rem", padding: "0.4rem 0.8rem" }}
+                style={{ fontSize: "0.8rem", padding: "0.4rem 0.8rem", display: "flex", alignItems: "center", gap: "0.5rem" }}
               >
-                🗑 Temizle
+                <Trash2 size={14} /> Temizle
               </button>
             </div>
           )}

@@ -4,7 +4,7 @@ import platform
 import threading
 import warnings
 from dataclasses import dataclass
-from typing import Optional, List, Tuple
+from typing import Optional
 
 from loguru import logger
 
@@ -59,11 +59,31 @@ class ASRService:
     def _choose_compute_type(self) -> str:
         if self._device == "cuda":
             return "float16"
+        if self._device == "mps":
+            return "float16"
         return "int8"
 
-    def load_model(self, model_size: str = "turbo") -> "WhisperModel":
+    def load_model(self, model_size: str = "turbo") -> "WhisperModel | None":
         if self._model is not None and self._model_size == model_size:
             return self._model
+        if getattr(self, "_is_mlx", False) and self._model_size == model_size:
+            return None
+
+        # Apple Silicon MLX Check
+        if platform.system() == "Darwin" and platform.machine() in ["arm64", "aarch64"]:
+            try:
+                import mlx_whisper
+                self._device = "mps"
+                self._compute_type = "float16"
+                self._model_size = model_size
+                self._is_mlx = True
+                logger.info(f"Loading ASR model '{model_size}' via Apple MLX (God-Tier Mode)")
+                return None  # MLX handles loading during transcribe
+            except ImportError:
+                logger.warning("mlx-whisper not found. Falling back to faster-whisper CPU/int8. For God-Tier performance on Mac, run: pip install mlx-whisper")
+                self._is_mlx = False
+        else:
+            self._is_mlx = False
 
         if WhisperModel is None:
             raise RuntimeError(
@@ -87,7 +107,7 @@ class ASRService:
 
     def transcribe(
         self, audio_path: str, language: str = "tr"
-    ) -> Tuple[List[TranscriptionSegment], float]:
+    ) -> tuple[list[TranscriptionSegment], float]:
         """Transcribes an audio file using Faster-Whisper.
 
         Returns:
@@ -96,17 +116,37 @@ class ASRService:
         if self._model is None:
             self.load_model()
 
-        segments_gen, info = self._model.transcribe(
+        if self._is_mlx:
+            import mlx_whisper
+            repo = f"mlx-community/whisper-{self._model_size}"
+            logger.debug(f"Transcribing via MLX ({repo})...")
+            res = mlx_whisper.transcribe(
+                audio_path,
+                path_or_hf_repo=repo,
+                language=language,
+            )
+            segments_gen = []
+            duration = 0.0
+            for s in res.get("segments", []):
+                segments_gen.append(TranscriptionSegment(
+                    start=s["start"],
+                    end=s["end"],
+                    text=s["text"].strip()
+                ))
+                duration = max(duration, s["end"])
+            return segments_gen, duration
+
+        segments_gen_fw, info = self._model.transcribe(
             audio_path,
             language=language,
             beam_size=5,
             vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=500),
+            vad_parameters={"min_silence_duration_ms": 500},
         )
 
         segments = [
             TranscriptionSegment(start=s.start, end=s.end, text=s.text.strip())
-            for s in segments_gen
+            for s in segments_gen_fw
         ]
 
         logger.debug(

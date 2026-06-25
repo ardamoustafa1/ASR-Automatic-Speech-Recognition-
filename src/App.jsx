@@ -10,7 +10,7 @@ import {
   UploadCloud,
   Mic,
 } from "lucide-react";
-import { Routes, Route, NavLink, useNavigate } from "react-router-dom";
+import { Routes, Route, NavLink } from "react-router-dom";
 import { Toaster, toast } from "react-hot-toast";
 
 import DashboardPage from "./pages/Dashboard";
@@ -28,10 +28,9 @@ import "./styles.css";
 // Move AnalyzePage inside pages later if needed, kept here for brevity based on existing code
 import { Play, FileAudio } from "lucide-react";
 import { useState } from "react";
-import { Skeleton, SkeletonList } from "./components/common/Skeleton";
+import { SkeletonList } from "./components/common/Skeleton";
 
 function AnalyzePage() {
-  const [file, setFile] = useState(null);
   const [status, setStatus] = useState("idle");
   const [result, setResult] = useState(null);
   const [textInput, setTextInput] = useState(
@@ -41,7 +40,7 @@ function AnalyzePage() {
   const analyzeText = async () => {
     setStatus("analyzing");
     try {
-      const res = await api.analyzeText(textInput);
+      await api.analyzeText(textInput);
       const segments = [{ start: 0, end: 0, text: textInput }];
       const saved = await api.analyze({
         segments,

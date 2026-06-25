@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -50,7 +51,7 @@ if not settings.jwt_secret_key:
         settings = settings.model_copy(update={"jwt_secret_key": secrets.token_hex(32)})
 
 if not settings.admin_password:
-    settings = settings.model_copy(update={"admin_password": "admin123"})
+    pass # Admin password must be provided externally
 
 
 # ─── Aliases for backwards compatibility ─────────────────────────────────────

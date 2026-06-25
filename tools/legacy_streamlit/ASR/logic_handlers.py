@@ -1,12 +1,21 @@
-import hashlib, html, math, os, platform, re, subprocess, sys, tempfile, time, warnings, wave, json
-from pathlib import Path
+import hashlib
+import math
+import os
+import platform
+import re
+import subprocess
+import time
+import wave
+from array import array
+from collections import namedtuple
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
-from array import array
-import streamlit as st
-from collections import namedtuple
+from pathlib import Path
+
 import srt
+import streamlit as st
 from config import *
+
 _torch = None
 _plt = None
 _WordCloud = None
@@ -139,11 +148,10 @@ class MLXWhisperWrapper:
         self.compute_type = "float16"
 
     def transcribe(self, audio, **kwargs):
-        import mlx_whisper
         import mlx.core as mx
+        import mlx_whisper
         from mlx_whisper.transcribe import ModelHolder
-        from collections import namedtuple
-        
+
         # Thread-safety for Streamlit: Bind MLX to the GPU stream in the current thread
         try:
             mx.set_default_stream(mx.default_stream(mx.gpu))
@@ -152,7 +160,7 @@ class MLXWhisperWrapper:
             ModelHolder.model_path = None
         except Exception:
             pass
-        
+
         mlx_kwargs = {}
         for key in [
             "language",
@@ -178,7 +186,7 @@ class MLXWhisperWrapper:
         mlx_kwargs["fp16"] = True
 
         res = mlx_whisper.transcribe(audio, path_or_hf_repo=self.repo_name, **mlx_kwargs)
-        
+
         Segment = namedtuple("Segment", ["start", "end", "text", "avg_logprob", "no_speech_prob", "compression_ratio", "words"])
         segments = []
         for s in res.get("segments", []):
@@ -191,12 +199,12 @@ class MLXWhisperWrapper:
                 compression_ratio=float(s.get("compression_ratio", 1.0)),
                 words=s.get("words", [])
             ))
-            
+
         class Info:
             language = res.get("language") or mlx_kwargs.get("language", "tr")
             language_probability = 1.0
             duration = res.get("duration")
-            
+
         return segments, Info()
 
 @st.cache_resource
@@ -245,7 +253,7 @@ def load_toxicity_classifier():
         return None
 
 # Modelleri aşağıda kullanıcı seçimine göre yükleyeceğiz
-# model = load_whisper_model(MODEL_SIZE) 
+# model = load_whisper_model(MODEL_SIZE)
 # nlp_classifier = load_toxicity_classifier()
 
 # --- YARDIMCI FONSİYONLAR ---
@@ -285,7 +293,7 @@ def diarize_audio(file_path, hf_token):
     try:
         # Pipeline'ı yükle
         pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization", use_auth_token=hf_token)
-        
+
         if pipeline is None:
              return "Model yüklenemedi. Token'ı kontrol edin veya Hugging Face üzerinden koşulları kabul ettiğinizden emin olun (pyannote/speaker-diarization)."
 
@@ -295,12 +303,12 @@ def diarize_audio(file_path, hf_token):
             pipeline.to(torch.device("cuda"))
 
         diarization = pipeline(file_path)
-        
+
         # Sonuçları okunabilir formata çevir
         result_str = ""
         for turn, _, speaker in diarization.itertracks(yield_label=True):
              result_str += f"start={turn.start:.1f}s stop={turn.end:.1f}s speaker_{speaker}\n"
-        
+
         return result_str if result_str else "Konuşmacı ayrımı yapıldı ancak sonuç boş."
 
     except Exception as e:
@@ -1471,7 +1479,7 @@ def apply_sota_features(candidate, model, domain_key, combined_hotwords, lang, s
             model, candidate["prepared_path"], segments, domain_key, combined_hotwords, lang
         )
         candidate["segments_data"] = improved_segments
-    
+
     # 2. Rebuild text
     full_transcription_parts = []
     formatted_body = ""
@@ -1479,18 +1487,18 @@ def apply_sota_features(candidate, model, domain_key, combined_hotwords, lang, s
     for segment in candidate["segments_data"]:
         text = segment.text
         full_transcription_parts.append(text)
-        
+
         m_start, s_start = divmod(segment.start, 60)
         m_end, s_end = divmod(segment.end, 60)
         time_str = f"[{int(m_start):02d}:{s_start:04.1f} - {int(m_end):02d}:{s_end:04.1f}]"
         formatted_body += f"{time_str} {text}\n"
         detected_swears.extend(detect_swears_in_segment(text, segment.start, swear_list))
-        
+
     full_text = " ".join(full_transcription_parts).strip()
-    
+
     # 3. Punctuation Restoration
     full_text = restore_turkish_punctuation(full_text)
-    
+
     candidate["full_transcription"] = full_text
     candidate["formatted_body"] = formatted_body
     candidate["detected_swears"] = detected_swears
@@ -1554,10 +1562,10 @@ def transcribe_audio_file(
             quality_retry_skipped_for_latency = True
 
     best_candidate = pick_best_transcription_candidate(candidates)
-    
+
     # Apply SOTA features
     best_candidate = apply_sota_features(best_candidate, model, domain_key, combined_hotwords, lang, swear_list)
-    
+
     elapsed_s = time.perf_counter() - overall_started
     best_prep_info = best_candidate.get("prep_info", prep_info)
     duration = best_prep_info.get("duration")
@@ -1633,20 +1641,20 @@ def consensus_transcribe(
         )
 
     overall_started = time.perf_counter()
-    
+
     # Hazırlık: standart ve apex ses ön işleme
     prepared_standard, prep_standard = prepare_audio_for_asr(file_path, AUDIO_PREP_STANDARD)
-    
+
     # Apex ses kurtarma (varsa)
     try:
         prepared_apex, prep_apex = prepare_audio_for_asr(file_path, AUDIO_PREP_APEX)
     except Exception:
         prepared_apex, prep_apex = prepared_standard, prep_standard
-    
+
     combined_hotwords = build_domain_hotwords(domain_key, hotwords)
-    
+
     candidates = []
-    
+
     # === GEÇİŞ 1: apex_quality profili (beam=10, temp=0.0, standard ses) ===
     try:
         c1 = transcribe_with_profile(
@@ -1657,7 +1665,7 @@ def consensus_transcribe(
         candidates.append(c1)
     except Exception:
         pass
-    
+
     # === GEÇİŞ 2: ultimate_accuracy profili (farklı beam/chunk, standard ses) ===
     try:
         c2 = transcribe_with_profile(
@@ -1668,7 +1676,7 @@ def consensus_transcribe(
         candidates.append(c2)
     except Exception:
         pass
-    
+
     # === GEÇİŞ 3: rescue profili (kötü ses kurtarma filtresiyle) ===
     try:
         c3 = transcribe_with_profile(
@@ -1679,7 +1687,7 @@ def consensus_transcribe(
         candidates.append(c3)
     except Exception:
         pass
-    
+
     if not candidates:
         # Fallback: normal transcribe
         return transcribe_audio_file(
@@ -1687,27 +1695,27 @@ def consensus_transcribe(
             "apex_quality", domain_key, hotwords,
             progress_callback, target_latency_s,
         )
-    
+
     # Konsensüs: en yüksek candidate_score'a sahip olanı seç
     best_candidate = pick_best_transcription_candidate(candidates)
-    
+
     # Apply SOTA features
     best_candidate = apply_sota_features(best_candidate, model, domain_key, combined_hotwords, lang, swear_list)
-    
+
     elapsed_s = time.perf_counter() - overall_started
-    
+
     best_prep_info = best_candidate.get("prep_info", prep_standard)
     duration = best_prep_info.get("duration")
     best_metrics = best_candidate["metrics"]
     hotword_count = len(parse_custom_terms(combined_hotwords))
-    
+
     apex_profile = ASR_PROFILES.get("apex_quality", ASR_PROFILES["ultimate_accuracy"])
     quality_gate_met = (
         best_metrics.get("confidence", 0.0) >= apex_profile.quality_gate
         and best_metrics.get("filtered_segments", 0) == 0
         and best_prep_info.get("audio_quality_score", 100.0) >= AUDIO_QUALITY_REVIEW_THRESHOLD
     )
-    
+
     run_metrics = {
         **best_prep_info,
         **best_metrics,
@@ -1724,11 +1732,11 @@ def consensus_transcribe(
         "selected_profile_label": best_metrics["profile_label"],
         "consensus_passes": len(candidates),
     }
-    
+
     formatted_text = build_formatted_transcript(
         best_candidate, run_metrics, candidates[1:], target_latency_s
     )
-    
+
     return (
         formatted_text,
         best_candidate["detected_swears"],
@@ -1781,15 +1789,15 @@ def redecode_low_confidence_segments(
     """
     if not segments_data:
         return segments_data
-    
+
     LOW_CONF_THRESHOLD = -0.7
     improved_segments = list(segments_data)
     redecoded_count = 0
-    
+
     for idx, seg in enumerate(segments_data):
         if seg.avg_logprob >= LOW_CONF_THRESHOLD:
             continue
-        
+
         # Çevreleyen bağlamı topla (önceki ve sonraki segmentlerin metni)
         context_parts = []
         if idx > 0:
@@ -1797,17 +1805,17 @@ def redecode_low_confidence_segments(
         if idx < len(segments_data) - 1:
             context_parts.append(segments_data[idx + 1].text)
         context_prompt = " ".join(context_parts)[:200] if context_parts else None
-        
+
         # Segmenti kes
         seg_path = Path(TEMP_AUDIO_DIR) / "redecode" / f"seg_{idx}_{int(seg.start*1000)}.wav"
         seg_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         pad_start = max(0.0, seg.start - 0.5)
         pad_end = seg.end + 0.5
-        
+
         if not extract_audio_segment_ffmpeg(prepared_path, pad_start, pad_end, str(seg_path)):
             continue
-        
+
         # Yeniden çöz: farklı parametrelerle
         try:
             retry_options = {
@@ -1832,16 +1840,16 @@ def redecode_low_confidence_segments(
                 "repetition_penalty": 1.15,
                 "hotwords": combined_hotwords.strip() or None,
             }
-            
+
             retry_segments, retry_info = model.transcribe(str(seg_path), **retry_options)
             retry_segments = list(retry_segments)
-            
+
             if retry_segments:
                 retry_text = " ".join(s.text.strip() for s in retry_segments if s.text.strip())
                 retry_logprob = sum(
                     float(getattr(s, "avg_logprob", -1.0) or -1.0) for s in retry_segments
                 ) / max(len(retry_segments), 1)
-                
+
                 # Yeniden çözüm daha iyiyse güncelle
                 if retry_text and retry_logprob > seg.avg_logprob:
                     corrected_text = postprocess_transcript_text(
@@ -1864,7 +1872,7 @@ def redecode_low_confidence_segments(
                 seg_path.unlink(missing_ok=True)
             except Exception:
                 pass
-    
+
     return improved_segments
 
 
@@ -1890,10 +1898,10 @@ def restore_turkish_punctuation(text: str) -> str:
     """
     if not text or not text.strip():
         return text
-    
+
     # Büyük harfle başlayan kelimelerin önüne nokta ekle (cümle sınırı tahmini)
     result = text
-    
+
     # Soru ekleri tespit et ve sonuna ? ekle
     sentences = re.split(r'(?<=[.?!])\s+', result)
     fixed_sentences = []
@@ -1901,26 +1909,26 @@ def restore_turkish_punctuation(text: str) -> str:
         sentence = sentence.strip()
         if not sentence:
             continue
-        
+
         is_question = False
         for pattern in _TURKISH_QUESTION_MARKERS:
             if re.search(pattern, sentence, re.IGNORECASE):
                 is_question = True
                 break
-        
+
         # Eğer cümle hiçbir noktalama ile bitmiyorsa
         if sentence and sentence[-1] not in '.?!':
             if is_question:
                 sentence += '?'
             else:
                 sentence += '.'
-        
+
         # İlk harf büyük olsun
         if sentence:
             sentence = sentence[0].upper() + sentence[1:]
-        
+
         fixed_sentences.append(sentence)
-    
+
     result = ' '.join(fixed_sentences)
     return result
 
@@ -1930,10 +1938,10 @@ def analyze_toxicity(text: str, classifier):
     """Metnin saldırganlık/toksisite skorunu hesaplar."""
     if not classifier or not text.strip():
         return "Analiz Yapılamadı", 0.0
-    
+
     # Metni model için uygun hale getir (Çok uzun metinler için kesme)
     max_len = 512
-    if len(text) > max_len * 2: 
+    if len(text) > max_len * 2:
         input_text = text[:max_len] + " [SEP] " + text[-max_len:]
     else:
         input_text = text
@@ -1942,22 +1950,22 @@ def analyze_toxicity(text: str, classifier):
         results = classifier(input_text)
         negative_score = 0
         positive_score = 0
-        
+
         for item in results[0]:
             if 'negative' in item['label'].lower():
                 negative_score = item['score']
             elif 'positive' in item['label'].lower():
                 positive_score = item['score']
-            
+
         if negative_score > 0.7 and negative_score > positive_score:
             toxicity_label = "Yüksek Negatif/Toksik"
         elif negative_score > 0.5:
             toxicity_label = "Orta Negatif"
         else:
             toxicity_label = "Düşük Negatif/Nötr"
-            
+
         return toxicity_label, negative_score
-        
+
     except Exception:
         return "NLP Hata", 0.0
 

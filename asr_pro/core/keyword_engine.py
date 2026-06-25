@@ -1,11 +1,13 @@
 from __future__ import annotations
+
 """Keyword & topic detection engine — generalized from ASR swear detection."""
 
 
 import re
-from dataclasses import dataclass, field
+from collections.abc import Sequence
+from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Optional, Literal, Protocol, Sequence
+from typing import Literal
 
 MatchType = Literal["exact", "fuzzy", "regex", "semantic", "phrase"]
 
@@ -31,7 +33,7 @@ class SegmentInput:
     start: float
     end: float
     text: str
-    speaker: Optional[str] = None
+    speaker: str | None = None
     segment_index: int = 0
 
 
@@ -44,8 +46,8 @@ class RuleInput:
     fuzzy_threshold: float = 0.85
     case_sensitive: bool = False
     severity: str = "info"
-    topic_id: Optional[str] = None
-    sector_scope: Optional[tuple[str, ...]] = None
+    topic_id: str | None = None
+    sector_scope: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -58,10 +60,10 @@ class KeywordHitResult:
     confidence: float
     timestamp_sec: float
     segment_index: int
-    speaker: Optional[str]
+    speaker: str | None
     context: str
     severity: str
-    topic_id: Optional[str] = None
+    topic_id: str | None = None
 
 
 def normalize_token(value: str) -> str:

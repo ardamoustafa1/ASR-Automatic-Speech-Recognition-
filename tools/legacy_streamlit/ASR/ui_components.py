@@ -1,18 +1,24 @@
+import hashlib
+import html
+import os
+import re
+import tempfile
+import time
+from datetime import datetime
+
+import psutil
 import streamlit as st
-import base64, re, json, time, psutil, html, math, os, platform, subprocess, sys, tempfile, wave, hashlib, warnings
-from datetime import datetime, timedelta
-from array import array
-from difflib import SequenceMatcher
-from pathlib import Path
 from config import *
 from logic_handlers import *
-from asr_pro.core.trend_engine import get_trend_data, detect_anomalies, run_keyword_analysis
-from asr_pro.core.keyword_engine import SegmentInput
+
 from asr_pro.core.churn_engine import analyze_churn_risk
-from asr_pro.core.sentiment_engine import analyze_sentiment
 from asr_pro.core.compliance_engine import analyze_compliance_risk
 from asr_pro.core.empathy_engine import analyze_soft_skills
+from asr_pro.core.keyword_engine import SegmentInput
+from asr_pro.core.sentiment_engine import analyze_sentiment
 from asr_pro.core.summary_engine import generate_crm_summary, generate_ollama_summary
+from asr_pro.core.trend_engine import detect_anomalies, get_trend_data, run_keyword_analysis
+
 KEYWORD_DETECTION_ENABLED = True
 def display_detection_results(detected_swears, col_display):
     if detected_swears:
@@ -81,11 +87,11 @@ def create_pdf_report(filename, text_content, detected_swears, toxicity_info):
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=12)
     pdf.add_page()
-    
+
     # Font Ayarı (Türkçe Karakter İçin)
     font_path = get_font_path()
     unicode_font_loaded = False
-    
+
     if font_path and os.path.exists(font_path):
         try:
             font_family_name = "TurkishFont"
@@ -97,7 +103,7 @@ def create_pdf_report(filename, text_content, detected_swears, toxicity_info):
 
     if not unicode_font_loaded:
         pdf.set_font("Arial", size=12)
-    
+
     clean = lambda value: pdf_safe_text(value, unicode_font_loaded)
 
 
@@ -117,7 +123,7 @@ def create_pdf_report(filename, text_content, detected_swears, toxicity_info):
     pdf.cell(0, 10, txt=clean("ÖZET İSTATİSTİKLER"), ln=True)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y()) # Çizgi
     pdf.ln(5)
-    
+
     pdf.set_font_size(11)
     pdf.cell(0, 8, txt=clean(f"Uygunsuz İfade Sayısı: {len(detected_swears)}"), ln=True)
     pdf.cell(0, 8, txt=clean(f"Toksisite Durumu: {toxicity_info}"), ln=True)
@@ -131,7 +137,7 @@ def create_pdf_report(filename, text_content, detected_swears, toxicity_info):
 
     pdf.set_font_size(10)
     pdf.multi_cell(0, 6, txt=clean(text_content))
-    
+
     return pdf_output_bytes(pdf)
 
 def metric_tone(label, value):
@@ -268,7 +274,7 @@ def render_search_and_transcript(segments_data):
                     <div class="transcript-text">...{highlighted_text}...</div>
                 </div>"""
         search_html += '</div>'
-        
+
         if found_count == 0:
             st.info("Kelime bulunamadı.")
         else:
@@ -277,25 +283,25 @@ def render_search_and_transcript(segments_data):
 
     st.markdown("---")
     st.markdown("#### Deşifre Çıktısı")
-    
+
     html_output = '<div class="transcript-container">'
     for segment in segments_data:
         m, s = divmod(segment.start, 60)
         time_formatted = f"{int(m):02d}:{s:04.1f}"
         text_content = html.escape(segment.text.strip())
-        
+
         # Apply search highlight if there is an active search
         if search_query and search_query.lower() in segment.text.lower():
             pattern = re.compile(re.escape(search_query), re.IGNORECASE)
             text_content = pattern.sub(lambda m: f'<span class="search-highlight">{m.group(0)}</span>', text_content)
-            
+
         html_output += f"""
         <div class="transcript-row">
             <div class="transcript-time">{time_formatted}</div>
             <div class="transcript-text">{text_content}</div>
         </div>"""
     html_output += '</div>'
-    
+
     st.markdown(html_output, unsafe_allow_html=True)
 
 def render_download_buttons(uploaded_name, formatted_text, segments_data, detected_swears, toxicity_label, negative_score):
@@ -874,18 +880,18 @@ def render_app():
 
         st.markdown('<div class="sidebar-separator"></div>', unsafe_allow_html=True)
         st.markdown('<div class="sidebar-section-title">Yapay Zeka Yetenekleri</div>', unsafe_allow_html=True)
-        
+
         enable_empathy = st.toggle("Empati ve Soft Skill Analizi", value=True, help="Temsilcinin aktif dinleme, şefkat ve robotik dil kullanımını analiz eder.")
         enable_autonote = st.toggle("CRM Kapanış Notu (Auto-Note)", value=True, help="Çağrıyı edebi bir dille özetler ve CRM'e hazır bilet oluşturur.")
         enable_churn = st.toggle("İptal (Churn) ve Risk Analizi", value=True, help="Müşterinin abonelik iptal riskini ve kurumsal uyumsuzlukları ölçer.")
-        
+
         st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
         ollama_model = st.selectbox("Lokal LLM Motoru (Özetleme İçin)", ["Kapalı (Sadece Yerel Motor)", "llama3", "llama3.1", "mistral", "gemma"])
         st.caption("Yerel LLM'in açık olması için terminalde 'ollama run llama3' yazmalısınız.")
 
         st.markdown('<div class="sidebar-separator"></div>', unsafe_allow_html=True)
         st.markdown('<div class="sidebar-section-title">Donanım ve Model Seçimi</div>', unsafe_allow_html=True)
-        
+
         is_mac_host = is_apple_silicon_host()
         hardware_engine = st.radio(
             "Altyapı",
@@ -895,7 +901,7 @@ def render_app():
             label_visibility="collapsed"
         )
         st.session_state["hardware_engine"] = hardware_engine
-        
+
         st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
 
         # Model Seçimi - Tüm modeller (CPU optimizasyonlu)
@@ -911,7 +917,7 @@ def render_app():
         st.caption(f"{model_size.upper()}: {MODEL_INFO.get(model_size, '')}")
 
         apple_mode = st.toggle("🍎 Yüksek Doğruluk (Konsensüs) Modu", value=False, help="Açıkken 3 farklı stratejiyle aynı sesi çözer, segment bazında en iyisini seçer. Yüksek doğruluk sağlar ama daha yavaştır.")
-        
+
         profile_label_to_key = {profile.label: key for key, profile in ASR_PROFILES.items()}
         profile_keys = tuple(profile_label_to_key.values())
         default_profile_key = "mac_turbo_sla" if wants_apple_mlx_engine(hardware_engine) else "ultimate_hybrid"
@@ -967,7 +973,7 @@ def render_app():
             placeholder="Gerçek metni buraya yapıştırırsanız WER/doğruluk hesaplanır.",
             help="Boş bırakılırsa gerçek WER kanıtlanamaz; yalnızca ASR güven ve ses kalite skoru gösterilir"
         )
-        
+
         hf_token = ""
         if diarization_mode:
             hf_token = st.text_input("Hugging Face Token", type="password", help="Pyannote modeli için gereklidir.")
@@ -984,7 +990,7 @@ def render_app():
         ram_total_gb = round(ram_usage.total / (1024 ** 3), 1)
         ram_percent = ram_usage.percent
         runtime_device, runtime_compute = describe_runtime_engine(hardware_engine)
-        
+
         st.markdown(f"""
             <div class="metric-box">
                 <div class="metric-label">İşlemci Kullanımı</div>
@@ -1020,7 +1026,7 @@ def render_app():
         # --- TEKLİ DOSYA İŞLEME ---
         # --------------------------
         if mode == "Tek Dosya Analizi":
-        
+
             col1, col2 = st.columns([1, 1.2], gap="large")
 
             with col1:
@@ -1029,15 +1035,15 @@ def render_app():
                     "MP3, WAV, M4A veya FLAC kaydı yükleyin. Dosya kurumsal ASR için 16 kHz mono WAV formatına hazırlanır.",
                     "Tek kayıt"
                 )
-            
+
                 uploaded_file = st.file_uploader("Dosya Seç", type=["mp3", "wav", "m4a", "flac"], label_visibility="collapsed")
-            
+
                 audio_path = None
                 if uploaded_file is not None:
                     audio_path = os.path.join(TEMP_AUDIO_DIR, uploaded_file.name)
                     with open(audio_path, "wb") as f:
                         f.write(uploaded_file.getbuffer())
-                
+
                     st.success(f"Kaynak alındı: {uploaded_file.name}")
                     try:
                         with open(audio_path, "rb") as f:
@@ -1053,8 +1059,8 @@ def render_app():
                     "Model yükleme, kalite kapısı, sektör sözlüğü, toksisite ve rapor üretimi bu bölümden yönetilir.",
                     "Hazır"
                 )
-            
-                swear_display_placeholder = st.empty() 
+
+                swear_display_placeholder = st.empty()
                 nlp_display_placeholder = st.empty()
                 render_panel(
                     "Çıktı / Deşifre Sonucu",
@@ -1095,7 +1101,7 @@ def render_app():
                         with st.spinner("YZ modelleri yükleniyor (Faster-Whisper)..."):
                             model = load_whisper_model(model_size, st.session_state.get("hardware_engine", "Windows"))
                             nlp_classifier = load_toxicity_classifier() if enable_nlp else None
-                    
+
                         with st.spinner("Ses ön işleme ve deşifre çalışıyor..."):
                             try:
                                 task_type = "translate" if translate_mode else "transcribe"
@@ -1152,39 +1158,39 @@ def render_app():
                                     """,
                                     unsafe_allow_html=True,
                                 )
-                            
+
                                 # --- SONUÇLARI GÖSTER ---
                                 display_detection_results(detected_swears, swear_display_placeholder)
 
                                 render_metric_summary(run_metrics, target_latency_s)
-                                
+
                                 # --- AI CHURN & COMPLIANCE ANALYTICS ---
                                 if KEYWORD_DETECTION_ENABLED:
                                     segment_inputs = [
-                                        SegmentInput(start=seg.start, end=seg.end, text=seg.text, segment_index=i) 
+                                        SegmentInput(start=seg.start, end=seg.end, text=seg.text, segment_index=i)
                                         for i, seg in enumerate(segments_data)
                                     ]
-                                    
+
                                     if enable_churn:
                                         st.markdown("---")
                                         st.markdown("### 🧠 Top-Tier AI Analytics (Churn & Emotion)")
                                         with st.spinner("Yapay Zeka (MPS Neural Engine) analiz ediyor..."):
                                             churn_res = analyze_churn_risk(segment_inputs)
-                                            
+
                                             # Duygu analizi için çağrının son kısımlarını (en güncel duyguyu) alalım
                                             sentiment_res = analyze_sentiment(segment_inputs[-1]) if segment_inputs else None
-                                            
+
                                             # CHURN METRIC
                                             churn_pct = int(churn_res.risk_score * 100)
                                             churn_color = "🔴" if churn_res.is_high_risk else "🟢"
-                                            
+
                                             # WPM METRIC
                                             wpm = churn_res.average_wpm
                                             wpm_color = "⚠️" if wpm > 160 else "⏱️"
-                                            
+
                                             # EMOTION METRIC
                                             emotion = sentiment_res.emotion_category if sentiment_res else "Nötr İletişim"
-                                            
+
                                             st.markdown(
                                                 f'''
                                                 <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; margin-bottom: 1.5rem;">
@@ -1203,12 +1209,12 @@ def render_app():
                                                 </div>
                                                 ''', unsafe_allow_html=True
                                             )
-                                            
+
                                             if churn_res.is_high_risk:
                                                 st.error(f"🚨 **YÜKSEK RİSK TESPİT EDİLDİ!** Müşteri çağrı sonuna doğru ayrılma tehdidi veya yoğun memnuniyetsizlik (Akustik: {wpm} WPM) gösterdi.")
                                             if churn_res.competitors_mentioned:
                                                 st.warning(f"🏢 **Rekabet Alarmı:** Rakip firma anıldı -> {', '.join(churn_res.competitors_mentioned).title()}")
-                                                
+
                                             # --- COMPLIANCE MONITORING ---
                                             compliance_res = analyze_compliance_risk(segment_inputs, domain_key=domain_key)
                                             if compliance_res:
@@ -1216,7 +1222,7 @@ def render_app():
                                                 for vio in compliance_res:
                                                     icon = "🛑" if vio.severity == "CRITICAL" else "⚠️"
                                                     color = "#ff4b4b" if vio.severity == "CRITICAL" else "#ffb200"
-                                                    
+
                                                     st.markdown(f"""
                                                     <div style="background-color: rgba(255, 0, 0, 0.05); border-left: 5px solid {color}; padding: 10px; margin-bottom: 10px; border-radius: 5px;">
                                                         <h4 style="margin:0; color: {color};">{icon} {vio.severity} İHLAL: {vio.category}</h4>
@@ -1224,42 +1230,42 @@ def render_app():
                                                         <p style="margin:5px 0 0 0; color: #f0f2f6;"><b>Temsilci Beyanı:</b> <i>"{vio.segment_text}"</i> <span style="color: gray; font-size: 0.8em;">[{vio.timestamp_start:.1f}s - {vio.timestamp_end:.1f}s]</span></p>
                                                     </div>
                                                     """, unsafe_allow_html=True)
-                                                    
+
                                     # --- EMPATHY & SOFT SKILLS ---
                                     if enable_empathy:
                                         empathy_res = analyze_soft_skills(segment_inputs)
                                         st.markdown("### 💖 Empati ve Soft Skill Analizi")
-                                        
+
                                         # Skor Rengi
                                         emp_color = "green" if empathy_res.score >= 80 else "orange" if empathy_res.score >= 50 else "red"
                                         emp_emoji = "🌟" if empathy_res.score >= 80 else "⚠️" if empathy_res.score >= 50 else "🛑"
-                                        
+
                                         st.markdown(f"**Empati Skoru:** `{empathy_res.score} / 100` {emp_emoji}")
                                         st.progress(empathy_res.score / 100.0)
-                                        
+
                                         if empathy_res.analysis_summary:
                                             st.info(empathy_res.analysis_summary)
-                                            
+
                                         emp_cols = st.columns(3)
                                         with emp_cols[0]:
                                             if empathy_res.active_listening_hits:
                                                 st.success("✅ **Aktif Dinleme:**\n" + ", ".join(f"'{h}'" for h in empathy_res.active_listening_hits))
                                             else:
                                                 st.error("❌ **Aktif Dinleme:** Tespit edilemedi")
-                                                
+
                                         with emp_cols[1]:
                                             if empathy_res.compassion_hits:
                                                 st.success("✅ **Şefkat / Özür:**\n" + ", ".join(f"'{h}'" for h in empathy_res.compassion_hits))
-                                                
+
                                             if empathy_res.solution_hits:
                                                 st.success("✅ **Çözüm Odaklılık:**\n" + ", ".join(f"'{h}'" for h in empathy_res.solution_hits))
-                                                
+
                                         with emp_cols[2]:
                                             if empathy_res.defensive_hits:
                                                 st.error("🛑 **Robotik/Defansif:**\n" + ", ".join(f"'{h}'" for h in empathy_res.defensive_hits))
                                             else:
                                                 st.success("✅ **Robotik Dil:** Yok")
-                                                
+
                                 # ----------------------------------------
 
                                 render_reference_gate_hint(reference_text)
@@ -1281,14 +1287,14 @@ def render_app():
                                     with st.spinner("Toksisite analizi yapılıyor..."):
                                             if nlp_classifier:
                                                 toxicity_label, negative_score = analyze_toxicity(full_transcription, nlp_classifier)
-                                            
+
                                                 # NLP Bazen Argo Kelimeleri Kaçırabilir, Eğer Küfür Listesinde Eşleşme Varsa Skoru Artır
                                                 if len(detected_swears) > 0:
                                                     # En az %45 toksik olarak işaretle (Orta Toksisite Başlangıcı)
                                                     # Her küfür için +0.05 ekle
                                                     base_swear_score = 0.45 + (len(detected_swears) * 0.05)
                                                     negative_score = max(negative_score, min(0.99, base_swear_score))
-                                                
+
                                                     if negative_score > 0.7:
                                                         toxicity_label = "Yüksek Toksik (Küfür + NLP)"
                                                     elif negative_score > 0.4:
@@ -1296,17 +1302,17 @@ def render_app():
                                             else:
                                                 # NLP yüklenemedi - küfür sayısına göre hesapla (FALLBACK)
                                                 st.info("NLP modeli yüklenemedi. Küfür tespitine dayalı analiz yapılıyor...")
-                                            
+
                                                 # Tespit edilen küfür sayısına göre toksisite hesapla
                                                 swear_count = len(detected_swears)
                                                 word_count = len(full_transcription.split())
-                                            
+
                                                 if word_count > 0 and swear_count > 0:
                                                     # Küfür oranı: (küfür sayısı / toplam kelime) * ağırlık faktörü
                                                     raw_ratio = swear_count / word_count
                                                     # Her küfür için %10-15 baz toksisite ekle, max %95
                                                     negative_score = min(0.95, swear_count * 0.12 + raw_ratio * 2)
-                                                
+
                                                     if negative_score > 0.7:
                                                         toxicity_label = "Yüksek Toksik (Küfür Bazlı)"
                                                     elif negative_score > 0.4:
@@ -1316,20 +1322,20 @@ def render_app():
                                                 else:
                                                     negative_score = 0.0
                                                     toxicity_label = "Temiz (Küfür Yok)"
-                                
+
                                     # Her durumda sonucu göster
                                     score_percent = negative_score * 100
-                                
+
                                     # Toksisite sonuç kartı
                                     st.markdown("---")
                                     st.markdown("### Toksisite Analiz Sonucu")
-                                
+
                                     # Küfür sayısı bilgisi
                                     if len(detected_swears) > 0:
                                         st.warning(f"**{len(detected_swears)} adet uygunsuz ifade tespit edildi.**")
-                                
+
                                     tox_col1, tox_col2 = st.columns(2)
-                                
+
                                     with tox_col1:
                                         if negative_score > 0.7:
                                             st.error("**Yüksek Toksisite**")
@@ -1339,14 +1345,14 @@ def render_app():
                                             st.info("**Düşük Toksisite**")
                                         else:
                                             st.success("**Temiz İçerik**")
-                                
+
                                     with tox_col2:
                                         render_quality_metric_cards(
                                             [
                                                 ("Toksisite Oranı", f"%{score_percent:.1f}", toxicity_label),
                                             ]
                                         )
-                                
+
                                     # Detaylı açıklama
                                     if negative_score > 0.7:
                                         st.error(f"Bu ses kaydı **%{score_percent:.1f}** oranında toksik içerik barındırıyor. ({len(detected_swears)} küfür)")
@@ -1390,12 +1396,12 @@ def render_app():
                                         if topics_list:
                                             for t in topics_list:
                                                 st.markdown(f"- {t}")
-                                            
+
                                             st.markdown("### ⚠️ Trend & Erken Uyarı Tespiti")
                                             current_trend_data = get_trend_data(14)
                                             anomalies = detect_anomalies(current_trend_data)
                                             anomaly_topics = {a.topic: a for a in anomalies}
-                                            
+
                                             found_anomaly = False
                                             for topic in topics_list:
                                                 if topic in anomaly_topics:
@@ -1405,7 +1411,7 @@ def render_app():
                                                         st.error(f"🚨 **DİKKAT! '{topic}'** konusu bu görüşmede tespit edildi. Sistemde bu konu son günlerde **%{a.increase_percentage} artış** ile KRİZ seviyesinde!")
                                                     else:
                                                         st.warning(f"⚠️ **Uyarı! '{topic}'** konusu bu görüşmede tespit edildi. Sistemde bu konu **%{a.increase_percentage} artış** ile YÜKSELİŞTE!")
-                                            
+
                                             if not found_anomaly:
                                                 st.success("✅ Bu görüşmedeki konular mevcut trend anomalileri (kriz) ile eşleşmedi. Rutin işlem.")
                                         else:
@@ -1429,7 +1435,7 @@ def render_app():
                                 if enable_autonote:
                                     st.markdown("---")
                                     st.markdown("### 📝 CRM Kapanış Notu (Auto-Note)")
-                                    
+
                                     with st.spinner("Çağrı özetleniyor..."):
                                         if ollama_model != "Kapalı (Sadece Yerel Motor)":
                                             crm_summary = generate_ollama_summary(full_transcription, ollama_model, nlp_classifier if enable_nlp else None)
@@ -1437,7 +1443,7 @@ def render_app():
                                         else:
                                             crm_summary = generate_crm_summary(full_transcription, nlp_classifier if enable_nlp else None)
                                             badge = "🤖 <b>Yerel AI ile Özetlendi</b>"
-                                        
+
                                     # Şık bir CRM bileti UI'ı
                                     st.markdown(f"""
                                     <div style="background-color: #1e1e1e; border: 1px solid #333; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
@@ -1453,7 +1459,7 @@ def render_app():
                                         </div>
                                     </div>
                                     """, unsafe_allow_html=True)
-                                    
+
                                     # Kopyalama metni (Pano için)
                                     copy_text = f"Müşteri: {crm_summary.intent}\\nSorun: {crm_summary.issue}\\nİşlem: {crm_summary.action}\\nSonuç: {crm_summary.resolution}\\n\\nÖzet: {crm_summary.executive_summary}"
                                     st.code(copy_text, language="text")
@@ -1461,7 +1467,7 @@ def render_app():
 
                                 # --- GÖRSELLEŞTİRME ---
                                 st.markdown("---")
-                            
+
                                 # KELİME BULUTU
                                 if enable_wordcloud:
                                     with st.expander("Kavram Haritası (Word Cloud)", expanded=True):
@@ -1472,7 +1478,7 @@ def render_app():
                                 # --- ARAMA MOTORU (YENİ) ---
                                 st.markdown("#### Ses İçi Arama")
                                 search_query = st.text_input("Ses kaydı içinde kelime ara...", placeholder="Örn: bütçe, toplantı, rakam...")
-                            
+
                                 if search_query:
                                     found_count = 0
                                     st.write(f"**'{search_query}' için sonuçlar:**")
@@ -1483,12 +1489,12 @@ def render_app():
                                             m, s = divmod(segment.start, 60)
                                             time_fmt = f"{int(m):02d}:{s:04.1f}"
                                             st.markdown(f"**{time_fmt}**: ...{segment.text.strip()}...")
-                                
+
                                     if found_count == 0:
                                         st.info("Kelime bulunamadı.")
                                     else:
                                         st.caption(f"Toplam {found_count} eşleşme bulundu.")
-                            
+
                                 st.markdown("---")
 
                                 # --- TRANSKRİPSİYON GÖRÜNÜMÜ ---
@@ -1505,19 +1511,19 @@ def render_app():
                                         m, s = divmod(segment.start, 60)
                                         time_formatted = f"{int(m):02d}:{s:04.1f}"
                                         text_content = html.escape(segment.text.strip())
-                                        
+
                                         # Apply search highlight if there is an active search
                                         if search_query and search_query.lower() in segment.text.lower():
                                             pattern = re.compile(re.escape(search_query), re.IGNORECASE)
                                             text_content = pattern.sub(lambda m: f'<span class="search-highlight">{m.group(0)}</span>', text_content)
-                                            
+
                                         html_output += f"""
                                         <div class="transcript-row">
                                             <div class="transcript-time">{time_formatted}</div>
                                             <div class="transcript-text">{text_content}</div>
                                         </div>"""
                                     html_output += '</div>'
-                                    
+
                                     st.markdown(html_output, unsafe_allow_html=True)
 
                                 # --- İNDİRME SEÇENEKLERİ ---
@@ -1573,7 +1579,7 @@ def render_app():
                         """,
                         unsafe_allow_html=True,
                      )
-                
+
 
 
         # --------------------------
@@ -1585,18 +1591,18 @@ def render_app():
                 "Mikrofondan alınan kısa kayıtlar tek dosya akışıyla aynı kalite kapısı, sektör sözlüğü ve raporlama mantığından geçer.",
                 "Mikrofon"
             )
-        
+
             # st.audio_input (Streamlit 1.39+)
             audio_value = st.audio_input("Mikrofonu etkinleştirmek için tıklayın")
-        
+
             if audio_value:
                 st.audio(audio_value)
-            
+
                 # Geçici kaydet
                 mic_path = os.path.join(TEMP_AUDIO_DIR, "microphone_input.wav")
                 with open(mic_path, "wb") as f:
                     f.write(audio_value.read())
-                
+
                 if st.button("Kaydı Analiz Et", type="primary"):
                      with st.spinner("Canlı kayıt işleniyor..."):
                         try:
@@ -1613,7 +1619,7 @@ def render_app():
                                 hotwords=hotwords_input,
                                 target_latency_s=target_latency_s,
                             )
-                        
+
                             st.success("Tüm kuyruk tamamlandı.")
 
 
@@ -1627,12 +1633,12 @@ def render_app():
                                         ("Kelime Doğruluğu", f"%{wer_stats['accuracy']:.1f}", f"WER %{wer_stats['wer'] * 100:.1f}"),
                                     ]
                                 )
-                        
+
                             if enable_wordcloud:
                                 wc_fig = create_wordcloud(full_transcription)
                                 if wc_fig:
                                     st.pyplot(wc_fig)
-                            
+
                         except Exception as e:
                             st.error(f"Hata: {e}")
 
@@ -1642,7 +1648,7 @@ def render_app():
         # --- TOPLU KLASÖR İŞLEME ---
         # --------------------------
         elif mode == "Toplu İşlem Merkezi":
-        
+
             render_panel(
                 "Toplu İşlem Merkezi",
                 f"Kaynak klasör: {BATCH_DIR}. Bu mod, klasördeki tüm sesleri sırayla işler ve tek bir denetim raporu üretir.",
@@ -1651,25 +1657,25 @@ def render_app():
 
             st.markdown("### 📥 Dosyaları Yükleyin")
             uploaded_batch = st.file_uploader(
-                "Toplu analiz için birden fazla ses dosyası seçin", 
-                type=["mp3", "wav", "m4a", "flac"], 
+                "Toplu analiz için birden fazla ses dosyası seçin",
+                type=["mp3", "wav", "m4a", "flac"],
                 accept_multiple_files=True
             )
-            
+
             audio_files = []
             if uploaded_batch:
                 for uf in uploaded_batch:
                     file_path = os.path.join(BATCH_DIR, uf.name)
                     with open(file_path, "wb") as f:
                         f.write(uf.getbuffer())
-                        
+
             audio_files = [os.path.join(BATCH_DIR, f) for f in os.listdir(BATCH_DIR) if f.endswith(('.mp3', '.wav', '.m4a', '.flac'))]
 
             if not audio_files:
                 st.warning("Klasörde veya yüklenenler arasında ses dosyası bulunamadı.")
             else:
                 st.success(f"{len(audio_files)} dosya kuyrukta bekliyor.")
-            
+
                 with st.expander("Dosya Listesini Gör"):
                     st.write([os.path.basename(f) for f in audio_files])
 
@@ -1682,14 +1688,14 @@ def render_app():
                     total_detected_swears = 0
                     progress_bar = st.progress(0)
                     status_text = st.empty()
-                
+
                     with open(OUTPUT_BATCH_FILENAME, "w", encoding="utf-8") as f:
                         f.write(f"--- ASR PRO RAPORU ---\nTarih: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-                    
+
                         for i, file_path in enumerate(audio_files):
                             file_name = os.path.basename(file_path)
                             status_text.text(f"İşleniyor ({i+1}/{len(audio_files)}): {file_name}")
-                        
+
                             try:
                                 formatted_text, detected_swears, full_transcription, segments_data, info, run_metrics = transcribe_audio_file(
                                     model,
@@ -1704,7 +1710,7 @@ def render_app():
                                 # Toplu sonuçlara ekleme
                                 total_detected_swears += len(detected_swears)
                                 toxicity_label, negative_score = analyze_toxicity(full_transcription, nlp_classifier) if enable_nlp else ("Atlandı", 0.0)
-                            
+
                                 f.write(f"\n[{file_name}]\n")
                                 f.write(
                                     f"İşlem Süresi: {run_metrics['elapsed_s']:.1f}s | "
@@ -1723,16 +1729,16 @@ def render_app():
                                     f.write(f"Uygunsuz İfadeler: {len(detected_swears)} adet\n")
                                 f.write("-" * 30 + "\n")
                                 f.write(formatted_text + "\n")
-                            
+
                             except Exception as e:
                                 f.write(f"[{file_name}] HATA: {e}\n")
-                        
+
                             progress_bar.progress((i + 1) / len(audio_files))
 
                     status_text.text("Tamamlandı!")
                     st.success(f"Tüm işlemler bitti. Toplam {total_detected_swears} uygunsuz ifade yakalandı.")
-                
-                    with open(OUTPUT_BATCH_FILENAME, "r", encoding="utf-8") as f:
+
+                    with open(OUTPUT_BATCH_FILENAME, encoding="utf-8") as f:
                         st.download_button(
                             label="⬇️ Toplu Raporu İndir",
                             data=f.read(),
@@ -1750,11 +1756,11 @@ def render_app():
                 "Yapay zeka, geçmiş binlerce çağrıyı tarayarak ürün ekipleri için kritik anomali ve trendleri yakalar.",
                 "Radar"
             )
-            
+
             st.markdown("### 📥 Canlı Veri / Simülasyon Besleme")
             st.info("Trendleri anlık test etmek için buraya çoklu ses dosyası yükleyebilirsiniz. Dosyalar anında deşifre edilip konuları Trend radarına yansıtılacaktır.")
             uploaded_trend = st.file_uploader("Trendi test etmek için ses dosyaları yükleyin", type=["mp3", "wav", "m4a", "flac"], accept_multiple_files=True, key="trend_uploader")
-            
+
             if uploaded_trend:
                 if st.button("Yüklenenleri Trende İşle", type="primary"):
                     with st.spinner("Dosyalar işleniyor ve Trend radarına aktarılıyor..."):
@@ -1763,7 +1769,7 @@ def render_app():
                             file_path = os.path.join(TEMP_AUDIO_DIR, uf.name)
                             with open(file_path, "wb") as f:
                                 f.write(uf.getbuffer())
-                            
+
                             try:
                                 _, _, full_transcription, _, _, _ = transcribe_audio_file(
                                     model, file_path, LANGUAGE, TURKISH_SWEAR_WORDS,
@@ -1772,18 +1778,18 @@ def render_app():
                                 run_keyword_analysis([], full_transcription)
                             except Exception as e:
                                 st.error(f"{uf.name} işlenirken hata: {e}")
-                                
+
                         st.success("Tüm dosyalar işlendi ve Trend radarına yansıtıldı!")
                         time.sleep(1)
                         st.rerun()
-                        
+
             st.markdown("### 🚨 Ürün Ekipleri İçin Erken Uyarı (Early Warning) Sistemi")
-            
+
             with st.spinner("Geçmiş 14 günün veritabanı analiz ediliyor..."):
                 trend_data = get_trend_data(days=14)
                 alerts = detect_anomalies(trend_data)
                 forecasts = forecast_tomorrow(trend_data)
-                
+
             if alerts:
                 for alert in alerts:
                     if alert.severity == "CRITICAL":
@@ -1792,7 +1798,7 @@ def render_app():
                         st.warning(f"**{alert.severity} UYARI:** `{alert.topic}` şikayetleri yükseliş trendinde (**%{alert.increase_percentage}**).")
             else:
                 st.success("✅ Son 48 saatte herhangi bir şikayet anomalisi / spike tespit edilmedi.")
-                
+
             if forecasts:
                 st.markdown("### 🔮 Yapay Zeka Gelecek Tahmini (Forecasting)")
                 cols = st.columns(min(3, len(forecasts)))
@@ -1810,7 +1816,7 @@ def render_app():
 
             st.markdown("---")
             st.markdown("### 📈 Son 14 Günlük Şikayet / Konu Hacmi")
-            
+
             import pandas as pd
             if trend_data:
                 df = pd.DataFrame.from_dict(trend_data, orient='index')
@@ -1818,6 +1824,6 @@ def render_app():
                     st.line_chart(df, height=400)
                 else:
                     st.info("Henüz görüntülenecek trend verisi bulunmuyor.")
-                
+
                 with st.expander("Ham Veriyi Görüntüle"):
                     st.dataframe(df)

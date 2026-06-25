@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+
 """API route: conversations — list, detail, and analysis endpoints."""
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
@@ -7,6 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from asr_pro.api.deps import get_db, limiter
+from asr_pro.api.routes.auth import get_current_user
 from asr_pro.api.schemas.conversations import (
     AnalyzeSegmentsRequest,
     AnalyzeTextRequest,
@@ -18,9 +19,10 @@ from asr_pro.api.schemas.conversations import (
 from asr_pro.core.keyword_engine import SegmentInput, hits_to_dict
 from asr_pro.db.models import Conversation, KeywordHit, Topic, TranscriptSegmentRow
 from asr_pro.db.session import SessionLocal
-from asr_pro.services.conversation_service import analyze_without_save, save_conversation_with_analysis
-
-from asr_pro.api.routes.auth import get_current_user
+from asr_pro.services.conversation_service import (
+    analyze_without_save,
+    save_conversation_with_analysis,
+)
 
 router = APIRouter(prefix="/conversations", tags=["conversations"], dependencies=[Depends(get_current_user)])
 
@@ -28,7 +30,7 @@ router = APIRouter(prefix="/conversations", tags=["conversations"], dependencies
 @router.get("", response_model=list[ConversationOut])
 def list_conversations(
     limit: int = Query(50, le=200),
-    sector: Optional[str] = None,
+    sector: str | None = None,
     db: Session = Depends(get_db),
 ):
     """List conversations with aggregated hit counts — uses a single subquery (no N+1)."""
@@ -42,15 +44,12 @@ def list_conversations(
 
     # ── Single query: aggregate hit counts for all returned conversations ──────
     conv_ids = [c.id for c in convs]
-    hit_count_map: dict[str, int] = {
-        conv_id: count
-        for conv_id, count in db.query(
+    hit_count_map: dict[str, int] = dict(db.query(
             KeywordHit.conversation_id, func.count(KeywordHit.id)
         )
         .filter(KeywordHit.conversation_id.in_(conv_ids))
         .group_by(KeywordHit.conversation_id)
-        .all()
-    }
+        .all())
 
     return [
         ConversationOut(

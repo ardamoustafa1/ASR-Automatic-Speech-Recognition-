@@ -2,11 +2,10 @@
 Apple-Level ASR Upgrade Patch Script
 Implements all 7 features from the implementation plan.
 """
-import re
 
 FILE = "ASR.py"
 
-with open(FILE, "r", encoding="utf-8") as f:
+with open(FILE, encoding="utf-8") as f:
     content = f.read()
 
 original = content  # backup

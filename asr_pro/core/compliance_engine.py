@@ -1,11 +1,12 @@
 from __future__ import annotations
+
 """Enterprise Compliance & Regulatory Monitoring Engine with Zero-Error Tolerance."""
 
 
-import re
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence, Literal
 from difflib import SequenceMatcher
+from typing import Literal
 
 from asr_pro.core.keyword_engine import SegmentInput
 from asr_pro.core.sentiment_engine import SentimentClassifier
@@ -70,15 +71,15 @@ def _is_negated(text: str, match_index: int, match_length: int) -> bool:
     window_end = text.find(" ", min(len(text), match_index + match_length + 50))
     if window_end == -1:
         window_end = len(text)
-        
+
     context_window = text[window_start:window_end].lower()
-    
+
     # Noktalama işaretlerini temizleyelim (nokta, virgül vb. kelimeye bitişik kalmasın)
     import string
     context_window = context_window.translate(str.maketrans('', '', string.punctuation))
-    
+
     context_words = set(context_window.split())
-    
+
     # Eğer kalkan kelimelerden biri etrafta geçiyorsa bu bir uyarı/açıklama cümlesidir, ihlal değildir!
     if context_words.intersection(FALSE_POSITIVE_NEGATORS):
         return True
@@ -88,16 +89,16 @@ def _fuzzy_match_phrase(pattern: str, text: str) -> tuple[bool, int, int]:
     """ASR (Ses Tanıma) hatalarını affeden Token-Overlap tabanlı esnek eşleşme."""
     pattern_lower = pattern.lower()
     text_lower = text.lower()
-    
+
     # Birebir geçiyorsa zaten en hızlısı bu (0ms)
     idx = text_lower.find(pattern_lower)
     if idx != -1:
         return True, idx, len(pattern_lower)
-        
+
     # Birebir yoksa ASR kelime atlamış veya harf yutmuş olabilir. (Örn: "kredi kartı şifre" -> "kredi kart şifre")
     pattern_words = pattern_lower.split()
     text_words = text_lower.split()
-    
+
     # Kayan pencere ile ardışık kelime dizilerini kontrol et (N-gram)
     n = len(pattern_words)
     if n > 1 and len(text_words) >= n:
@@ -110,7 +111,7 @@ def _fuzzy_match_phrase(pattern: str, text: str) -> tuple[bool, int, int]:
                 approx_start = text_lower.find(window[0])
                 approx_length = len(" ".join(window))
                 return True, approx_start, approx_length
-                
+
     return False, -1, 0
 
 def analyze_compliance_risk(segments: Sequence[SegmentInput], domain_key: str = "general", use_ai: bool = True) -> list[ComplianceViolation]:
@@ -122,25 +123,25 @@ def analyze_compliance_risk(segments: Sequence[SegmentInput], domain_key: str = 
     domain_patterns = RED_FLAG_PATTERNS.get(domain_key, {})
     general_patterns = RED_FLAG_PATTERNS.get("general", {})
     all_patterns = {**domain_patterns, **general_patterns}
-    
+
     classifier = SentimentClassifier.get_instance() if use_ai else None
 
     # 1. FUZZY RED FLAG (DETERMINISTIC) + NEGATION FILTER
     for seg in segments:
         text = seg.text or ""
         text_lower = text.lower()
-        
+
         violation_found_in_segment = False
-        
+
         for category, patterns in all_patterns.items():
             for pattern in patterns:
                 is_match, m_idx, m_len = _fuzzy_match_phrase(pattern, text)
-                
+
                 if is_match:
                     # Eşleşti ama acaba yasal bir uyarı cümlesi mi? (False Positive Check)
                     if _is_negated(text_lower, m_idx, m_len):
                         continue # Sahte alarm kalkanı devrede! İhlal yok.
-                        
+
                     violations.append(
                         ComplianceViolation(
                             severity="CRITICAL",
@@ -152,11 +153,11 @@ def analyze_compliance_risk(segments: Sequence[SegmentInput], domain_key: str = 
                         )
                     )
                     violation_found_in_segment = True
-                    break 
-            
+                    break
+
             if violation_found_in_segment:
                 continue
-                
+
         # 2. YAPAY ZEKA (CONTEXTUAL) DENETİMİ (Confidence Gate %80)
         words = text.split()
         if not violation_found_in_segment and use_ai and classifier and len(words) > 5:
@@ -165,11 +166,11 @@ def analyze_compliance_risk(segments: Sequence[SegmentInput], domain_key: str = 
                 # Sahte alarm olmaması için burada da ön kontrol yap
                 if _is_negated(text_lower, 0, len(text_lower)):
                     continue
-                    
+
                 hypothesis = "This customer service response represents {}."
                 res = classifier.predict(text, labels=NLP_COMPLIANCE_LABELS, hypothesis=hypothesis)
                 score_map = dict(zip(res["labels"], res["scores"]))
-                
+
                 # Confidence Gate: Eşik değerleri eskisinden çok daha katı (%80)
                 if score_map.get("misleading promise", 0.0) > 0.80:
                     violations.append(

@@ -1,10 +1,11 @@
 from __future__ import annotations
+
 """Advanced AI-Based Sentiment & Emotion Analysis Engine using Transformers."""
 
 
 import threading
 from dataclasses import dataclass
-from typing import Optional, Literal
+from typing import Literal
 
 from loguru import logger
 
@@ -25,15 +26,15 @@ class SentimentResult:
     stress_level: StressLevel
     confidence: float
     segment_index: int
-    speaker: Optional[str]
+    speaker: str | None
 
 
 
 class SentimentClassifier:
     """Singleton for Lazy Loading the AI Model and Managing Hardware Acceleration."""
-    _instance: Optional[SentimentClassifier] = None
+    _instance: SentimentClassifier | None = None
     _lock = threading.Lock()
-    
+
     def __init__(self):
         self._pipeline = None
         self._device_str = "cpu"
@@ -78,10 +79,10 @@ class SentimentClassifier:
         """Run inference on the text."""
         labels = labels or EMOTION_LABELS
         hypothesis = hypothesis or "The emotion expressed in this text is {}."
-        
+
         if not text or not text.strip():
             return {"labels": labels, "scores": [1.0] + [0.0]*(len(labels)-1)}
-            
+
         self._load_model()
         return self._pipeline(text, labels, hypothesis_template=hypothesis, multi_label=False)
 
@@ -100,24 +101,24 @@ def _map_to_category(label: str) -> EmotionCategory:
 def _calculate_scores(labels: list[str], scores: list[float]) -> tuple[float, StressLevel]:
     """Derive sentiment (-1 to 1) and stress level based on model probabilities."""
     score_map = dict(zip(labels, scores))
-    
+
     # Calculate a weighted sentiment score based on emotion probabilities
     positive_score = score_map.get("satisfied", 0.0)
     negative_score = score_map.get("angry", 0.0) + score_map.get("frustrated", 0.0) + score_map.get("anxious", 0.0)
-    
+
     # Range is roughly -1.0 to 1.0
     sentiment = float(positive_score - negative_score)
-    
+
     # Calculate stress
     high_stress_prob = score_map.get("angry", 0.0) + score_map.get("anxious", 0.0) + (score_map.get("frustrated", 0.0) * 0.5)
-    
+
     if high_stress_prob > 0.45:
         stress = "Yüksek"
     elif score_map.get("satisfied", 0.0) > 0.4 or score_map.get("neutral", 0.0) > 0.5:
         stress = "Düşük"
     else:
         stress = "Normal"
-        
+
     return round(sentiment, 3), stress
 
 
@@ -141,7 +142,7 @@ def analyze_sentiment(segment: SegmentInput) -> SentimentResult:
     # 2. Extract best match
     best_label = result["labels"][0]
     best_score = result["scores"][0]
-    
+
     # 3. Derive secondary metrics
     sentiment_score, stress_level = _calculate_scores(result["labels"], result["scores"])
     category = _map_to_category(best_label)

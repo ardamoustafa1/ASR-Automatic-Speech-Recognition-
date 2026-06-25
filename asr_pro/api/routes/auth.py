@@ -1,16 +1,16 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Request
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from pydantic import BaseModel
+
 import jwt
-import os
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from passlib.context import CryptContext
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from asr_pro.api.deps import limiter, get_db
-from asr_pro.db.models import User as DBUser
+from asr_pro.api.deps import get_db, limiter
 from asr_pro.config import JWT_SECRET_KEY as SECRET_KEY
+from asr_pro.db.models import User as DBUser
 
 router = APIRouter(tags=["auth"])
 
@@ -52,10 +52,10 @@ async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequ
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": db_user.username, "role": db_user.role}, 
+        data={"sub": db_user.username, "role": db_user.role},
         expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
@@ -73,8 +73,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         if username is None:
             raise credentials_exception
         return User(username=username, role=role)
-    except jwt.PyJWTError:
-        raise credentials_exception
+    except jwt.PyJWTError as err:
+        raise credentials_exception from err
 
 @router.get("/auth/me", response_model=User)
 async def read_users_me(current_user: User = Depends(get_current_user)):

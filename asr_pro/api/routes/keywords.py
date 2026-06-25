@@ -1,12 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from asr_pro.api.routes.auth import require_admin
 
-from asr_pro.api.deps import get_db
+from asr_pro.api.deps import get_db, limiter
+from asr_pro.api.routes.auth import require_admin
 from asr_pro.api.schemas.keywords import (
     KeywordRuleCreate,
-    KeywordRuleUpdate,
     KeywordRuleOut,
+    KeywordRuleUpdate,
     KeywordTestRequest,
     KeywordTestResponse,
     TopicOut,
@@ -23,7 +23,8 @@ def list_rules(db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=KeywordRuleOut, status_code=201, dependencies=[Depends(require_admin)])
-def create_rule(payload: KeywordRuleCreate, db: Session = Depends(get_db)):
+@limiter.limit("20/minute")
+def create_rule(request: Request, payload: KeywordRuleCreate, db: Session = Depends(get_db)):
     rule = KeywordRule(id=new_uuid(), **payload.model_dump())
     db.add(rule)
     db.commit()
@@ -40,7 +41,8 @@ def get_rule(rule_id: str, db: Session = Depends(get_db)):
 
 
 @router.patch("/{rule_id}", response_model=KeywordRuleOut, dependencies=[Depends(require_admin)])
-def update_rule(rule_id: str, payload: KeywordRuleUpdate, db: Session = Depends(get_db)):
+@limiter.limit("20/minute")
+def update_rule(request: Request, rule_id: str, payload: KeywordRuleUpdate, db: Session = Depends(get_db)):
     rule = db.query(KeywordRule).filter(KeywordRule.id == rule_id).first()
     if not rule:
         raise HTTPException(404, "Kural bulunamadı")
@@ -53,7 +55,8 @@ def update_rule(rule_id: str, payload: KeywordRuleUpdate, db: Session = Depends(
 
 
 @router.delete("/{rule_id}", status_code=204, dependencies=[Depends(require_admin)])
-def delete_rule(rule_id: str, db: Session = Depends(get_db)):
+@limiter.limit("20/minute")
+def delete_rule(request: Request, rule_id: str, db: Session = Depends(get_db)):
     rule = db.query(KeywordRule).filter(KeywordRule.id == rule_id).first()
     if not rule:
         raise HTTPException(404, "Kural bulunamadı")
@@ -62,7 +65,8 @@ def delete_rule(rule_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/test", response_model=KeywordTestResponse)
-def test_keyword(payload: KeywordTestRequest, db: Session = Depends(get_db)):
+@limiter.limit("20/minute")
+def test_keyword(request: Request, payload: KeywordTestRequest, db: Session = Depends(get_db)):
     if payload.rule_id:
         db_rule = db.query(KeywordRule).filter(KeywordRule.id == payload.rule_id).first()
         if not db_rule:

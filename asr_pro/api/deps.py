@@ -19,7 +19,7 @@ def get_user_or_ip(request: Request) -> str:
             if username:
                 return f"user:{username}"
         except Exception:
-            pass
+            pass  # nosec B110
     return get_remote_address(request)
 
 

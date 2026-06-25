@@ -17,7 +17,7 @@ export default function LoginPage({ onLogin }) {
       const res = await api.login(username, password);
       localStorage.setItem("asr_token", res.access_token);
       onLogin(res.access_token);
-    } catch (err) {
+    } catch {
       setError("Giriş başarısız. Lütfen bilgilerinizi kontrol edin.");
     } finally {
       setLoading(false);

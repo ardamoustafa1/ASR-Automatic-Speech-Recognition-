@@ -1,10 +1,11 @@
 from __future__ import annotations
+
 """Top-Tier Enterprise Churn Risk Engine with Acoustic and Temporal Analytics."""
 
 
 import re
-from dataclasses import dataclass, field
-from typing import Optional, Sequence
+from collections.abc import Sequence
+from dataclasses import dataclass
 
 from asr_pro.core.keyword_engine import SegmentInput
 from asr_pro.core.sentiment_engine import SentimentClassifier
@@ -14,7 +15,7 @@ CHURN_ALARM_THRESHOLD = 0.75
 
 # Example Competitor List for NER Extraction
 COMPETITORS = {
-    "vodafone", "turkcell", "türk telekom", "turk telekom", "superonline", 
+    "vodafone", "turkcell", "türk telekom", "turk telekom", "superonline",
     "turknet", "türknet", "aws", "azure", "google cloud"
 }
 
@@ -49,58 +50,58 @@ def _extract_competitors(text: str) -> set[str]:
     return found
 
 
-def analyze_churn_risk(segments: Sequence[SegmentInput], customer_speaker_id: Optional[str] = None) -> ChurnResult:
+def analyze_churn_risk(segments: Sequence[SegmentInput], customer_speaker_id: str | None = None) -> ChurnResult:
     """Analyze call transcript with Temporal and Acoustic Stress (WPM) mechanics (Optimized for Speed)."""
     if not segments:
         return ChurnResult(0.0, False, (), (), 0, 0)
 
     classifier = SentimentClassifier.get_instance()
     hypothesis = "The customer's intent in this text is {}."
-    
+
     cumulative_risk = 0.0
     insights: list[ChurnInsight] = []
     competitors: set[str] = set()
     total_wpm = 0
     wpm_count = 0
-    
+
     total_segments = len(segments)
-    
+
     # 1. HIZLI GEÇİŞ: Sadece WPM (Akustik Stres) ve Rakip Firma analizi yap (Çok Hızlı)
     # Ayrıca ML modeline göndermek için anlamlı, birleştirilmiş cümle öbekleri (chunk) oluştur.
     chunks = []
     current_chunk_text = []
     current_chunk_wpm_sum = 0
     current_chunk_wpm_count = 0
-    
+
     for idx, seg in enumerate(segments):
         if customer_speaker_id and seg.speaker and seg.speaker != customer_speaker_id:
             continue
-            
+
         text = seg.text or ""
         words = text.split()
         if len(text.strip()) < 3:
             continue
-            
+
         # Acoustic Stress (WPM)
         duration = max(0.5, seg.end - seg.start)
         wpm = int((len(words) / duration) * 60)
-        
+
         total_wpm += wpm
         wpm_count += 1
-        
+
         current_chunk_text.append(text)
         current_chunk_wpm_sum += wpm
         current_chunk_wpm_count += 1
-        
+
         competitors.update(_extract_competitors(text))
-        
+
         # Her 5 segmentte bir (veya sona gelindiğinde) birleştirilmiş bir analiz öbeği (chunk) oluştur
         if len(current_chunk_text) >= 5 or idx == total_segments - 1:
             chunk_str = " ".join(current_chunk_text)
             avg_chunk_wpm = current_chunk_wpm_sum / max(1, current_chunk_wpm_count)
             # Zaman ağırlığı: Aramanın sonlarına doğru ağırlık artar
             temporal_weight = 1.0 + (0.5 * (idx / max(1, total_segments - 1)))
-            
+
             chunks.append({
                 "text": chunk_str,
                 "wpm": avg_chunk_wpm,
@@ -115,20 +116,20 @@ def analyze_churn_risk(segments: Sequence[SegmentInput], customer_speaker_id: Op
         text = chunk["text"]
         wpm = chunk["wpm"]
         temporal_weight = chunk["temporal_weight"]
-        
+
         acoustic_multiplier = 1.0
         if wpm > 190:
             acoustic_multiplier = 1.4
         elif wpm > 160:
             acoustic_multiplier = 1.2
-            
+
         # Ağır NLP modeli artık her satırda değil, 5 satırda bir (blok halinde) çalışıyor!
         result = classifier.predict(text, labels=CHURN_LABELS, hypothesis=hypothesis)
         score_map = dict(zip(result["labels"], result["scores"]))
-        
+
         base_risk = score_map.get("canceling service", 0.0) + score_map.get("switching to competitor", 0.0)
         final_segment_risk = base_risk * acoustic_multiplier * temporal_weight
-        
+
         if final_segment_risk > 0.3:
             insights.append(ChurnInsight(
                 text=text,
@@ -141,7 +142,7 @@ def analyze_churn_risk(segments: Sequence[SegmentInput], customer_speaker_id: Op
             cumulative_risk += (final_segment_risk * 0.6)
 
     final_risk = min(1.0, cumulative_risk)
-    
+
     if competitors and final_risk > 0.4:
         final_risk = max(final_risk, 0.8)
 

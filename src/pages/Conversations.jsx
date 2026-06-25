@@ -104,7 +104,7 @@ export default function ConversationsPage() {
               )}
 
               <div className="transcript-box">
-                {selected.segments.map((seg, idx) => {
+                {selected.segments.map((seg, _idx) => {
                   const segHits = selected.hits.filter(
                     (h) => Math.abs(h.timestamp_sec - seg.start) < 0.5
                   );

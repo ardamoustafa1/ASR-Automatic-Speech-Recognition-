@@ -7,7 +7,7 @@ MODEL_NAME_MAP = {
     "turbo": "large-v3-turbo",
     "large": "large-v3",
     "medium": "medium",
-    "small": "small", 
+    "small": "small",
     "base": "base",
     "tiny": "tiny"
 }
@@ -23,7 +23,7 @@ MODEL_INFO = {
 LANGUAGE = "tr"
 TEMP_AUDIO_DIR = "temp_audio_uploads"
 BATCH_DIR = "batch_audio_files"
-TOXICITY_CLASSIFIER_MODEL = "savasy/bert-base-turkish-sentiment-cased" 
+TOXICITY_CLASSIFIER_MODEL = "savasy/bert-base-turkish-sentiment-cased"
 TARGET_LATENCY_SECONDS = 20
 QUALITY_GATE_ACCURACY = 95.0
 QUALITY_GATE_WER = 5.0
@@ -76,7 +76,7 @@ AUDIO_PREP_FILTERS[AUDIO_PREP_APEX] = (
 
 # --- KÜFÜR VERİTABANI (KAPSAMLI) ---
 TURKISH_SWEAR_WORDS = [
-    "sik", "sikik", "siktir", "siktirgit", "sikerim", "sikcek", "sikeyim", "siksin", "sikim", 
+    "sik", "sikik", "siktir", "siktirgit", "sikerim", "sikcek", "sikeyim", "siksin", "sikim",
     "siktiret", "sikicem", "sikici", "sikilmiş", "sikme", "sikmek", "sikiş", "sikişmek",
     "siksok", "sikko", "sike", "sikmiş", "sikecek", "sikerler", "sikilir", "sikilen",
     "am", "amcık", "amcik", "amına", "amina", "amk", "amq", "aq", "amınakoyayım", "aminakoyim",

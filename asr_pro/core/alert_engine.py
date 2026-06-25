@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """Alert evaluation and dispatch."""
 
 
@@ -7,7 +8,7 @@ from datetime import timedelta
 from sqlalchemy.orm import Session
 
 from asr_pro.core.trend_engine import compute_trend
-from asr_pro.db.models import AlertRule, AlertEvent, new_uuid, utcnow
+from asr_pro.db.models import AlertEvent, AlertRule, new_uuid, utcnow
 
 
 def _condition_matches(trend, condition: dict) -> bool:
@@ -71,7 +72,7 @@ def evaluate_alerts(db: Session) -> list[AlertEvent]:
         db.add(event)
         rule.last_triggered_at = utcnow()
         events.append(event)
-        
+
         # Dispatch webhook if configured
         if "webhook" in (rule.channels or []) or "in_app" in (rule.channels or []):
             _dispatch_webhook(event)
@@ -81,12 +82,13 @@ def evaluate_alerts(db: Session) -> list[AlertEvent]:
 
 def _dispatch_webhook(event: AlertEvent) -> None:
     """Send alert to external webhook URL if configured."""
-    from asr_pro.config import WEBHOOK_URL
     from loguru import logger
-    
+
+    from asr_pro.config import WEBHOOK_URL
+
     if not WEBHOOK_URL:
         return
-        
+
     try:
         import httpx
         payload = {
@@ -96,7 +98,7 @@ def _dispatch_webhook(event: AlertEvent) -> None:
             "details": event.payload,
             "timestamp": event.created_at.isoformat() if event.created_at else None
         }
-        
+
         # Fire-and-forget in a background thread or synchronous if timeout is low
         # Using a low timeout for sync requests so we don't block the API
         with httpx.Client(timeout=3.0) as client:

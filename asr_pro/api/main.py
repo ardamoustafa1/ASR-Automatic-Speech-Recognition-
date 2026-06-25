@@ -1,19 +1,19 @@
 """FastAPI application entry point — Enterprise ASR-Pro API."""
-from contextlib import asynccontextmanager
-import sys
 import os
+import sys
 import uuid
+from contextlib import asynccontextmanager
 from contextvars import ContextVar
 
-from fastapi import FastAPI, Request, Depends
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
-from sqlalchemy import text
+from loguru import logger
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from loguru import logger
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from asr_pro.config import CORS_ORIGINS
 
@@ -32,22 +32,22 @@ else:
         colorize=True,
     )
 
-from asr_pro.db.session import init_db, SessionLocal
-from asr_pro.api.deps import get_db, limiter
-from asr_pro.services.seed_data import seed_defaults
-from asr_pro.api.routes.keywords import router as keywords_router, topics_router
-from asr_pro.api.routes.conversations import router as conversations_router
-from asr_pro.api.routes.analytics import router as analytics_router
-from asr_pro.api.routes.alerts import router as alerts_router
-from asr_pro.api.routes.websocket import router as websocket_router
-from asr_pro.api.routes.auth import router as auth_router
-
+import redis.asyncio as aioredis
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.inmemory import InMemoryBackend
 from fastapi_cache.backends.redis import RedisBackend
-import redis.asyncio as aioredis
-
 from prometheus_fastapi_instrumentator import Instrumentator
+
+from asr_pro.api.deps import get_db, limiter
+from asr_pro.api.routes.alerts import router as alerts_router
+from asr_pro.api.routes.analytics import router as analytics_router
+from asr_pro.api.routes.auth import router as auth_router
+from asr_pro.api.routes.conversations import router as conversations_router
+from asr_pro.api.routes.keywords import router as keywords_router
+from asr_pro.api.routes.keywords import topics_router
+from asr_pro.api.routes.websocket import router as websocket_router
+from asr_pro.db.session import SessionLocal, init_db
+from asr_pro.services.seed_data import seed_defaults
 
 
 @asynccontextmanager
@@ -138,12 +138,14 @@ async def log_requests(request: Request, call_next):
 
 
 # ─── Routers ──────────────────────────────────────────────────────────────────
+from asr_pro.api.routes.auth import get_current_user
+
 app.include_router(auth_router, prefix="/api/v1")
-app.include_router(keywords_router, prefix="/api/v1")
-app.include_router(topics_router, prefix="/api/v1")
-app.include_router(conversations_router, prefix="/api/v1")
-app.include_router(analytics_router, prefix="/api/v1")
-app.include_router(alerts_router, prefix="/api/v1")
+app.include_router(keywords_router, prefix="/api/v1", dependencies=[Depends(get_current_user)])
+app.include_router(topics_router, prefix="/api/v1", dependencies=[Depends(get_current_user)])
+app.include_router(conversations_router, prefix="/api/v1", dependencies=[Depends(get_current_user)])
+app.include_router(analytics_router, prefix="/api/v1", dependencies=[Depends(get_current_user)])
+app.include_router(alerts_router, prefix="/api/v1", dependencies=[Depends(get_current_user)])
 app.include_router(websocket_router)
 
 

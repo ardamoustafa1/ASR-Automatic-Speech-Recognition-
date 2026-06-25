@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+
 """API route: analytics — trends, dashboard summary, and top keywords."""
 
 from fastapi import APIRouter, Depends, Query
@@ -7,10 +7,9 @@ from fastapi_cache.decorator import cache
 from sqlalchemy.orm import Session
 
 from asr_pro.api.deps import get_db
-from asr_pro.api.schemas.analytics import DailyPointOut, DashboardOut, TrendOut
-from asr_pro.core.trend_engine import compute_trend, dashboard_summary, top_keywords
-
 from asr_pro.api.routes.auth import get_current_user
+from asr_pro.api.schemas.analytics import DashboardOut, TrendOut
+from asr_pro.core.trend_engine import compute_trend, dashboard_summary, top_keywords
 
 router = APIRouter(prefix="/analytics", tags=["analytics"], dependencies=[Depends(get_current_user)])
 
@@ -24,11 +23,11 @@ def get_dashboard(db: Session = Depends(get_db)):
 @router.get("/trends", response_model=TrendOut)
 @cache(expire=60)
 def get_trends(
-    keyword: Optional[str] = None,
-    topic_id: Optional[str] = None,
-    rule_id: Optional[str] = None,
+    keyword: str | None = None,
+    topic_id: str | None = None,
+    rule_id: str | None = None,
     window: str = Query("7d", pattern="^(24h|7d|30d)$"),
-    sector: Optional[str] = None,
+    sector: str | None = None,
     db: Session = Depends(get_db),
 ):
     """Return percentage-change trend data for a keyword or topic."""

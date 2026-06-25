@@ -1,10 +1,11 @@
 """Default topics, keyword rules, and alert rules."""
 
+import os
+
+from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
-from asr_pro.db.models import Topic, KeywordRule, AlertRule, User, new_uuid
-from passlib.context import CryptContext
-import os
+from asr_pro.db.models import AlertRule, KeywordRule, Topic, User, new_uuid
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -116,6 +117,7 @@ def seed_defaults(db: Session) -> None:
             db.add(alert)
 
     import secrets
+
     from loguru import logger
 
     # Admin User Seeding
@@ -123,6 +125,8 @@ def seed_defaults(db: Session) -> None:
     if not admin_user:
         admin_password = os.environ.get("ASR_ADMIN_PASSWORD")
         if not admin_password:
+            if os.getenv("ENV") == "prod":
+                raise RuntimeError("ASR_ADMIN_PASSWORD must be set in production.")
             admin_password = secrets.token_urlsafe(16)
             logger.warning(f"ASR_ADMIN_PASSWORD not set. Generated random admin password: {admin_password}")
         db.add(User(
@@ -138,6 +142,8 @@ def seed_defaults(db: Session) -> None:
     if not agent_user:
         agent_password = os.environ.get("ASR_AGENT_PASSWORD")
         if not agent_password:
+            if os.getenv("ENV") == "prod":
+                raise RuntimeError("ASR_AGENT_PASSWORD must be set in production.")
             agent_password = secrets.token_urlsafe(16)
             logger.warning(f"ASR_AGENT_PASSWORD not set. Generated random agent password: {agent_password}")
         db.add(User(
