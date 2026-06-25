@@ -469,9 +469,14 @@ def local_css():
     background-attachment: fixed !important;
 }
 
-/* Hide Default Streamlit Elements to fix white gap */
-#MainMenu, footer, header[data-testid="stHeader"] {
-    background-color: transparent !important;
+/* Hide Default Streamlit Elements to fix white gap and hide Deploy button */
+#MainMenu, footer, header[data-testid="stHeader"], .stDeployButton, [data-testid="stToolbar"] {
+    visibility: hidden !important;
+    display: none !important;
+}
+
+body {
+    overflow-x: hidden !important;
 }
 
 .block-container {
@@ -1677,8 +1682,7 @@ def render_app():
                 st.success(f"{len(audio_files)} dosya kuyrukta bekliyor.")
 
                 with st.expander("Dosya Listesini Gör"):
-                    st.write([os.path.basename(f) for f in audio_files])
-
+                    pass
                 OUTPUT_BATCH_FILENAME = f"batch_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
 
                 if st.button("Toplu Analizi Başlat", type="primary"):

@@ -17,9 +17,12 @@ import warnings
 from pathlib import Path
 
 # Anahtar kelime & konu tespiti entegrasyonu
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+_STREAMLIT_DIR = Path(__file__).resolve().parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
+if str(_STREAMLIT_DIR) not in sys.path:
+    sys.path.insert(0, str(_STREAMLIT_DIR))
 try:
     from asr_pro.core.churn_engine import analyze_churn_risk
     from asr_pro.core.compliance_engine import analyze_compliance_risk
