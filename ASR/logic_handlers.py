@@ -1066,7 +1066,7 @@ def is_suspicious_asr_segment(segment, text: str):
     avg_logprob = float(getattr(segment, "avg_logprob", -1.0) or -1.0)
     no_speech_prob = float(getattr(segment, "no_speech_prob", 0.0) or 0.0)
 
-    # Agresif eşikler (Apple Mode)
+    # Agresif eşikler (Yüksek Doğruluk)
     if len(words) >= 12 and unique_ratio < 0.30:
         return True
     if len(words) >= 16 and trigram_repeat > 0.35:
@@ -1740,7 +1740,7 @@ def consensus_transcribe(
 
 
 def auto_select_profile(audio_quality_score: float) -> str:
-    """Ses kalitesine göre otomatik en iyi profili seçer (Apple Mode)."""
+    """Ses kalitesine göre otomatik en iyi profili seçer."""
     if audio_quality_score >= 85:
         return "apex_quality"
     elif audio_quality_score >= 60:

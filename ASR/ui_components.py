@@ -756,7 +756,7 @@ def render_command_header(mode, model_size, profile_key, domain_key, runtime_dev
                     <div class="eyebrow">Enterprise Speech Intelligence</div>
                     <h1>Kurumsal ses kayıtlarını denetlenebilir metne dönüştür.</h1>
                     <div class="subtitle">
-                        Adaptif kötü ses kurtarma, sektör sözlüğü ve kalite kapısı tek akışta. Hedef: Kelime doğruluğu %95+ ve WER %5 altı.
+                        Adaptif kötü ses kurtarma, sektör sözlüğü ve kalite kapısı tek akışta. Hedef: Yüksek kelime doğruluğu ve optimize edilmiş hata oranı.
                     </div>
                 </div>
                 <div class="status-line">
@@ -873,7 +873,7 @@ def render_app():
         )
 
         st.markdown('<div class="sidebar-separator"></div>', unsafe_allow_html=True)
-        st.markdown('<div class="sidebar-section-title">🧠 Yapay Zeka Yetenekleri (God-Tier)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sidebar-section-title">🧠 Yapay Zeka Yetenekleri</div>', unsafe_allow_html=True)
         
         enable_empathy = st.toggle("💖 Empati ve Soft Skill Analizi", value=True, help="Temsilcinin aktif dinleme, şefkat ve robotik dil kullanımını analiz eder.")
         enable_autonote = st.toggle("📝 CRM Kapanış Notu (Auto-Note)", value=True, help="Çağrıyı edebi bir dille özetler ve CRM'e hazır bilet oluşturur.")
@@ -909,7 +909,7 @@ def render_app():
 
         st.caption(f"{model_size.upper()}: {MODEL_INFO.get(model_size, '')}")
 
-        apple_mode = st.toggle("🍎 Apple Mode (Konsensüs)", value=False, help="Açıkken 3 farklı stratejiyle aynı sesi çözer, segment bazında en iyisini seçer. En yüksek doğruluk ama en yavaş.")
+        apple_mode = st.toggle("🍎 Yüksek Doğruluk (Konsensüs) Modu", value=False, help="Açıkken 3 farklı stratejiyle aynı sesi çözer, segment bazında en iyisini seçer. Yüksek doğruluk sağlar ama daha yavaştır.")
         
         profile_label_to_key = {profile.label: key for key, profile in ASR_PROFILES.items()}
         profile_keys = tuple(profile_label_to_key.values())
@@ -925,7 +925,7 @@ def render_app():
         st.session_state["apple_mode"] = apple_mode
         if apple_mode:
             profile_key = "apex_quality"
-            st.caption("🍎 Apple Mode aktif: 3 geçişli konsensüs dekodlama ile en yüksek doğruluk.")
+            st.caption("🍎 Yüksek Doğruluk Modu aktif: 3 geçişli konsensüs dekodlama ile daha güvenilir sonuçlar.")
         else:
             profile_key = profile_label_to_key[selected_profile_label]
             st.caption(ASR_PROFILES[profile_key].description)

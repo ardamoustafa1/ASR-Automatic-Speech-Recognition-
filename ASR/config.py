@@ -179,7 +179,7 @@ class DomainProfile:
 
 ASR_PROFILES = {
     "mac_turbo_sla": ASRProfile(
-        label="Mac Turbo 20sn +95 Kapısı",
+        label="Mac Turbo 20sn Yüksek Kalite",
         description="Apple Silicon ve turbo model için düşük gecikmeli tek ana geçiş; kalite düşükse yalnızca süre bütçesi kalırsa kurtarma dener.",
         use_batched=True,
         batch_size=12,
@@ -199,7 +199,7 @@ ASR_PROFILES = {
         hallucination_silence_threshold=1.2,
     ),
     "ultimate_hybrid": ASRProfile(
-        label="Nihai Hibrit Hız+95+",
+        label="Nihai Hibrit Hız ve Kalite",
         description="Hızlı kurumsal denge: batch çözümleme, güçlü bağlam, kalite düşükse otomatik kurtarma geçişi.",
         use_batched=True,
         batch_size=8,
@@ -239,8 +239,8 @@ ASR_PROFILES = {
         hallucination_silence_threshold=1.0,
     ),
     "apex_quality": ASRProfile(
-        label="Apple Kalite (Apex)",
-        description="Hız değil doğruluk. beam=10, best_of=10, çoklu geçiş, en kötü ses bile %95+ hedefi.",
+        label="Gelişmiş Kalite Modu",
+        description="Hız değil doğruluk. beam=10, best_of=10, çoklu geçiş, zorlu seslerde bile yüksek doğruluk hedefi.",
         use_batched=False,
         batch_size=1,
         beam_size=10,
@@ -259,7 +259,7 @@ ASR_PROFILES = {
         hallucination_silence_threshold=0.8,
     ),
     "enterprise": ASRProfile(
-        label="Kurumsal Maksimum 95+",
+        label="Kurumsal Maksimum Doğruluk",
         description="Şirket teslimi için en yüksek doğruluk: güçlü beam, geniş bağlam, otomatik düşük-güven yeniden deneme.",
         use_batched=False,
         batch_size=1,
@@ -278,7 +278,7 @@ ASR_PROFILES = {
         retry_profile_key="rescue",
     ),
     "banking": ASRProfile(
-        label="Kurumsal 95 Hedef",
+        label="Kurumsal Standart",
         description="Çağrı merkezi için stabil segmentleme, sektör sözlüğü ve denetlenebilir düzeltme.",
         use_batched=True,
         batch_size=8,
