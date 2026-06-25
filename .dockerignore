@@ -8,6 +8,8 @@ data/
 .github/
 tests/
 dev-scripts/
+tools/
+helm-chart/
 node_modules/
 dist/
 *.exe
