@@ -52,7 +52,7 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - ./ASR:/app/ASR
+      - ./tools/legacy_streamlit/ASR:/app/ASR
       - ./asr_pro:/app/asr_pro
       - ./temp_audio_uploads:/app/temp_audio_uploads
       - ./batch_audio_files:/app/batch_audio_files
