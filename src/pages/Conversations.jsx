@@ -1,16 +1,56 @@
-import { useState, useEffect } from "react";
+import { Fragment, useState, useEffect } from "react";
 import { ChevronRight } from "lucide-react";
 import { api, formatTime, severityColor } from "../api/client";
+import { SkeletonList } from "../components/common/Skeleton";
 
-function highlightText(text, hits) {
-  if (!hits?.length) return text;
-  let result = text;
-  const sorted = [...hits].sort((a, b) => b.matched_text.length - a.matched_text.length);
-  for (const hit of sorted) {
-    const re = new RegExp(`(${hit.matched_text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
-    result = result.replace(re, '<mark class="kw-highlight">$1</mark>');
+function highlightedRanges(text, hits) {
+  if (!text || !hits?.length) return [];
+
+  const lowerText = text.toLocaleLowerCase("tr-TR");
+  const ranges = [];
+  const sorted = [...hits]
+    .map((hit) => hit.matched_text || "")
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+
+  for (const term of sorted) {
+    const needle = term.toLocaleLowerCase("tr-TR");
+    let fromIndex = 0;
+
+    while (needle && fromIndex < lowerText.length) {
+      const start = lowerText.indexOf(needle, fromIndex);
+      if (start === -1) break;
+
+      const end = start + needle.length;
+      const overlaps = ranges.some((range) => start < range.end && end > range.start);
+      if (!overlaps) ranges.push({ start, end });
+      fromIndex = end;
+    }
   }
-  return result;
+
+  return ranges.sort((a, b) => a.start - b.start);
+}
+
+function renderHighlightedText(text, hits) {
+  const ranges = highlightedRanges(text, hits);
+  if (!ranges.length) return text;
+
+  const parts = [];
+  let cursor = 0;
+  ranges.forEach((range, index) => {
+    if (range.start > cursor) {
+      parts.push(text.slice(cursor, range.start));
+    }
+    parts.push(
+      <mark className="kw-highlight" key={`${range.start}-${range.end}-${index}`}>
+        {text.slice(range.start, range.end)}
+      </mark>
+    );
+    cursor = range.end;
+  });
+  if (cursor < text.length) parts.push(text.slice(cursor));
+
+  return parts.map((part, index) => <Fragment key={index}>{part}</Fragment>);
 }
 
 export default function ConversationsPage() {
@@ -30,7 +70,17 @@ export default function ConversationsPage() {
     setSelected(detail);
   };
 
-  if (loading) return <div className="page-loading">Yükleniyor...</div>;
+  if (loading) {
+    return (
+      <div className="page-content">
+        <header className="page-header">
+          <h1>Görüşmeler</h1>
+          <p>Anahtar kelime eşleşmeleriyle birlikte deşifre kayıtları</p>
+        </header>
+        <SkeletonList count={5} height="80px" />
+      </div>
+    );
+  }
 
   return (
     <div className="page-content">
@@ -113,7 +163,7 @@ export default function ConversationsPage() {
                       <div className="t-time">{formatTime(seg.start)}</div>
                       <div className="t-content">
                         {seg.speaker && <strong>{seg.speaker}</strong>}
-                        <p dangerouslySetInnerHTML={{ __html: highlightText(seg.text, segHits) }} />
+                        <p>{renderHighlightedText(seg.text, segHits)}</p>
                       </div>
                     </div>
                   );

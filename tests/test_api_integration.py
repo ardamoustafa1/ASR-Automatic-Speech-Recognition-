@@ -103,3 +103,62 @@ def test_get_alerts_with_query(client: TestClient):
     )
     assert response.status_code == 200
     assert isinstance(response.json(), list)
+
+
+# --- GDPR ENDPOINT TESTS ---
+
+
+def test_export_conversation(client: TestClient):
+    token = get_admin_token(client)
+    # Get a conversation ID first (assume one was created by the analyze test or seed)
+    conv_response = client.get(
+        "/api/v1/conversations", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert conv_response.status_code == 200
+    convs = conv_response.json()
+    if not convs:
+        return  # Skip if no conversations
+
+    conv_id = convs[0]["id"]
+    export_response = client.get(
+        f"/api/v1/conversations/{conv_id}/export", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert export_response.status_code == 200
+    data = export_response.json()
+    assert "conversation" in data
+    assert "full_transcript" in data["conversation"]
+    assert "segments" in data
+
+
+def test_delete_conversation(client: TestClient):
+    token = get_admin_token(client)
+    # Post a new conversation to delete
+    payload = {
+        "full_transcript": "To be deleted.",
+        "segments": [{"start": 0.0, "end": 1.0, "text": "To be deleted."}],
+        "sector": "omni",
+    }
+    client.post(
+        "/api/v1/conversations/analyze", json=payload, headers={"Authorization": f"Bearer {token}"}
+    )
+    import time
+
+    time.sleep(1)
+
+    conv_response = client.get(
+        "/api/v1/conversations", headers={"Authorization": f"Bearer {token}"}
+    )
+    convs = conv_response.json()
+    conv_id = convs[0]["id"]  # Delete the first one
+
+    del_response = client.delete(
+        f"/api/v1/conversations/{conv_id}", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert del_response.status_code == 200
+    assert del_response.json()["status"] == "success"
+
+    # Verify it is deleted
+    get_response = client.get(
+        f"/api/v1/conversations/{conv_id}", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert get_response.status_code == 404

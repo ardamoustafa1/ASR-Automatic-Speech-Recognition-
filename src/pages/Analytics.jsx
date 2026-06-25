@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { api } from "../api/client";
 import { TrendChart } from "../components/TrendChart";
+import { SkeletonList } from "../components/common/Skeleton";
 
 const KEYWORDS = ["zam", "fatura", "iade", "iptal", "şikayet"];
 
@@ -97,7 +98,7 @@ export default function AnalyticsPage() {
       </div>
 
       {loading ? (
-        <div className="page-loading">Yükleniyor...</div>
+        <SkeletonList count={3} height="150px" />
       ) : (
         <div className="analytics-hero glass-panel">
           <div className="analytics-title">

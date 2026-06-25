@@ -1135,6 +1135,9 @@ mark.kw-highlight {
 }
 
 @media (max-width: 900px) {
+  .app-container {
+    flex-direction: column;
+  }
   .dashboard-grid,
   .conv-layout,
   .alerts-grid {
@@ -1143,13 +1146,16 @@ mark.kw-highlight {
   .sidebar {
     width: 100%;
     position: relative;
+    border-right: none;
+    border-bottom: 1px solid var(--border-subtle);
+    height: auto;
   }
 }
 
 /* Skeleton Shimmer */
 .skeleton-shimmer {
-  background: #f6f7f8;
-  background-image: linear-gradient(to right, #f6f7f8 0%, #edeef1 20%, #f6f7f8 40%, #f6f7f8 100%);
+  background: var(--bg-glass);
+  background-image: linear-gradient(to right, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.1) 20%, rgba(255,255,255,0.05) 40%, rgba(255,255,255,0.05) 100%);
   background-repeat: no-repeat;
   background-size: 800px 100%;
   display: inline-block;
