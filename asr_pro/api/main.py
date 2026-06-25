@@ -14,6 +14,10 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+import asyncio
+import time
+from asr_pro.config import TEMP_AUDIO_DIR
+from asr_pro.db.models import AuditLog
 
 from asr_pro.config import CORS_ORIGINS
 
@@ -62,6 +66,23 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
 
+    # ─── Background Audio Purge Job ───────────────────────────────────────────
+    async def purge_audio_loop():
+        while True:
+            try:
+                now = time.time()
+                if TEMP_AUDIO_DIR.exists():
+                    for f in TEMP_AUDIO_DIR.iterdir():
+                        if f.is_file() and (now - f.stat().st_mtime) > 24 * 3600:
+                            f.unlink()
+                            logger.info(f"Purged old audio file: {f.name}")
+            except Exception as e:
+                logger.error(f"Error in audio purge loop: {e}")
+            await asyncio.sleep(3600)
+
+    purge_task = asyncio.create_task(purge_audio_loop())
+    logger.info("Started 24-hour audio purge background job.")
+
     # ─── Cache Initialization ─────────────────────────────────────────────────
     redis_url = os.getenv("ASR_REDIS_URL") or os.getenv("REDIS_URL")
     if redis_url:
@@ -73,6 +94,7 @@ async def lifespan(app: FastAPI):
         logger.info("Cache: Using in-memory cache (set ASR_REDIS_URL for Redis)")
 
     yield
+    purge_task.cancel()
     logger.info("ASR-Pro API shutdown.")
 
 
@@ -97,6 +119,40 @@ Instrumentator(
 
 # ─── Middleware ───────────────────────────────────────────────────────────────
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+@app.middleware("http")
+async def audit_log_middleware(request: Request, call_next):
+    # Only audit log state-changing routes
+    if request.method in ["POST", "PUT", "DELETE", "PATCH"] and request.url.path.startswith("/api/v1/"):
+        response = await call_next(request)
+        try:
+            db = SessionLocal()
+            ip = request.client.host if request.client else "unknown"
+            # Get user from jwt token if present
+            user_id = None
+            auth = request.headers.get("Authorization", "")
+            if auth.startswith("Bearer "):
+                import jwt
+                from asr_pro.config import JWT_SECRET_KEY
+                try:
+                    payload = jwt.decode(auth.split(" ")[1], JWT_SECRET_KEY, algorithms=["HS256"])
+                    user_id = payload.get("sub")
+                except Exception:
+                    pass
+            audit = AuditLog(
+                user_id=user_id,
+                action=request.method,
+                target_resource=request.url.path,
+                ip_address=ip,
+                details={"status_code": response.status_code}
+            )
+            db.add(audit)
+            db.commit()
+            db.close()
+        except Exception as e:
+            logger.error(f"Failed to create audit log: {e}")
+        return response
+    return await call_next(request)
 
 app.add_middleware(
     CORSMiddleware,
