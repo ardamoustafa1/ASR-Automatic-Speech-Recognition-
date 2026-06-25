@@ -80,8 +80,8 @@ try:
 
     KEYWORD_DETECTION_ENABLED = True
 except ImportError as e:
-    # Print the error to console instead of showing it in the UI
-    print(f"DEBUG: Import error in ASR.py: {e}")
+    # Do not print error to console to prevent continuous Streamlit terminal spam
+    pass
     KEYWORD_DETECTION_ENABLED = False
 
 # --- LAZY IMPORT DEĞİŞKENLERİ ---
