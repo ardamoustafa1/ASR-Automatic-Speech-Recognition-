@@ -33,19 +33,37 @@ try:
     from asr_pro.core.trend_engine import detect_anomalies, get_trend_data, log_call_trend
 
     # Lightweight Topic Extractor to replace the missing asr_bridge.py
-    def run_keyword_analysis(segments_data, full_transcription, sector=None, audio_path=None, uploaded_name=None, asr_confidence=0.0, quality_gate_passed=True):
+    def run_keyword_analysis(
+        segments_data,
+        full_transcription,
+        sector=None,
+        audio_path=None,
+        uploaded_name=None,
+        asr_confidence=0.0,
+        quality_gate_passed=True,
+    ):
         topics = [
-            "Mobil Uygulama Çökmesi", "Ödeme Ekranı Hatası", "Kargo Gecikmesi",
-            "Şifre Yenileme", "Üyelik İptali", "Ürün İadesi", "Müşteri Hizmetleri Şikayeti",
-            "Fatura İtirazı", "İnternet Bağlantı Sorunu"
+            "Mobil Uygulama Çökmesi",
+            "Ödeme Ekranı Hatası",
+            "Kargo Gecikmesi",
+            "Şifre Yenileme",
+            "Üyelik İptali",
+            "Ürün İadesi",
+            "Müşteri Hizmetleri Şikayeti",
+            "Fatura İtirazı",
+            "İnternet Bağlantı Sorunu",
         ]
 
         detected_topics = []
         text_lower = full_transcription.lower()
 
-        if "uygulama" in text_lower and ("çök" in text_lower or "açılmıyor" in text_lower or "hata" in text_lower):
+        if "uygulama" in text_lower and (
+            "çök" in text_lower or "açılmıyor" in text_lower or "hata" in text_lower
+        ):
             detected_topics.append("Mobil Uygulama Çökmesi")
-        if "kargo" in text_lower and ("gelmedi" in text_lower or "gecik" in text_lower or "nerede" in text_lower):
+        if "kargo" in text_lower and (
+            "gelmedi" in text_lower or "gecik" in text_lower or "nerede" in text_lower
+        ):
             detected_topics.append("Kargo Gecikmesi")
         if "ödeme" in text_lower or "kart" in text_lower or "para" in text_lower:
             detected_topics.append("Ödeme Ekranı Hatası")
@@ -59,13 +77,10 @@ try:
             try:
                 log_call_trend(topic=t)
             except Exception:
-                pass # Silently fail if DB is locked or not initialized yet
+                pass  # Silently fail if DB is locked or not initialized yet
 
         # Return a mock format expected by render_keyword_results if needed
-        return {
-            "topics": detected_topics,
-            "raw_text": full_transcription
-        }
+        return {"topics": detected_topics, "raw_text": full_transcription}
 
     KEYWORD_DETECTION_ENABLED = True
 except ImportError:
@@ -85,6 +100,7 @@ import shutil
 # --- FFmpeg AYARLARI (SESSION STATE İLE OPTİMİZE) ---
 if "ffmpeg_ready" not in st.session_state:
     import imageio_ffmpeg
+
     ffmpeg_src = imageio_ffmpeg.get_ffmpeg_exe()
     ffmpeg_dst = os.path.join(os.getcwd(), "ffmpeg.exe")
     if not os.path.exists(ffmpeg_dst):
@@ -114,10 +130,7 @@ if not os.path.exists(BATCH_DIR):
 # Standart faster-whisper modelleri (yerel cache - hızlı yükleme)
 
 
-
-
 from logic_handlers import *
 from ui_components import *
 
 render_app()
-
