@@ -1,8 +1,10 @@
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from passlib.context import CryptContext
 from pydantic import BaseModel
@@ -48,7 +50,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return encoded_jwt
 
 
-@router.post("/auth/login", response_model=Token)
+@router.post("/auth/login")
 @limiter.limit("5/minute")
 async def login_for_access_token(
     request: Request,
@@ -71,15 +73,47 @@ async def login_for_access_token(
     access_token = create_access_token(
         data={"sub": db_user.username, "role": db_user.role}, expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+
+    response = JSONResponse(
+        content={
+            "access_token": access_token,
+            "token_type": "bearer",
+            "message": "Login successful",
+        }
+    )
+    response.set_cookie(
+        key="asr_token",
+        value=access_token,
+        httponly=True,
+        secure=os.getenv("ASR_ENV") == "prod",
+        samesite="lax",
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+    return response
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
+@router.post("/auth/logout")
+async def logout():
+    response = JSONResponse(content={"message": "Logged out"})
+    response.delete_cookie("asr_token")
+    return response
+
+
+async def get_current_user(request: Request, asr_token: Optional[str] = Cookie(None)):
+    token = asr_token
+    if not token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if not token:
+        raise credentials_exception
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
