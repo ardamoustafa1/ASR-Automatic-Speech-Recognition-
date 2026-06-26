@@ -3,7 +3,7 @@ replicaCount: 2
 image:
   repository: ardamoustafa/asr-pro-backend
   pullPolicy: IfNotPresent
-  tag: "latest"
+  tag: "1.0.0"
 
 service:
   type: ClusterIP
@@ -11,7 +11,11 @@ service:
 
 env:
   databaseUrl: "postgresql://user:password@asr-db:5432/asr_pro"
-  jwtSecretKey: "change_this_in_production_secret"
+  redisUrl: "redis://asr-redis:6379/0"
+
+secrets:
+  jwtKey: ""
+  adminPassword: ""
 
 resources:
   requests:
@@ -20,3 +24,55 @@ resources:
   limits:
     cpu: 2000m
     memory: 4Gi
+
+frontend:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ardamoustafa/asr-pro-frontend
+    tag: "1.0.0"
+  service:
+    port: 80
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: asr.example.com
+      paths:
+        - path: /api
+          pathType: Prefix
+          backend:
+            serviceName: asr-pro-backend
+            servicePort: 8000
+        - path: /
+          pathType: Prefix
+          backend:
+            serviceName: asr-pro-frontend
+            servicePort: 80
+  tls:
+    - secretName: asr-tls-secret
+      hosts:
+        - asr.example.com
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
