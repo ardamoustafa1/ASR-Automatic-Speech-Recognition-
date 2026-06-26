@@ -37,12 +37,15 @@
 }
 
 body,
-html {
+html,
+#root {
   font-family: "Outfit", sans-serif;
   background-color: var(--bg-deep);
   color: var(--text-main);
   line-height: 1.5;
   overflow-x: hidden;
+  min-height: 100vh;
+  height: 100%;
 }
 
 /* Deep Space Animated Mesh Gradient Background */
@@ -69,6 +72,20 @@ html {
   overflow-y: auto;
   flex-shrink: 0;
   z-index: 10;
+  transition: transform 0.3s ease;
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    transform: translateX(0);
+  }
+  .sidebar.collapsed {
+    transform: translateX(-100%);
+  }
 }
 
 .sidebar::-webkit-scrollbar {
@@ -263,6 +280,21 @@ html {
   flex-direction: column;
   gap: 1.5rem;
   overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+  .workspace {
+    padding: 1rem 1.5rem;
+  }
+  .sidebar-toggle {
+    left: 1rem !important;
+  }
+  .main-grid {
+    grid-template-columns: 1fr;
+  }
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 .workspace::-webkit-scrollbar {
