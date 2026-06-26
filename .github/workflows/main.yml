@@ -35,10 +35,10 @@ jobs:
         run: isort --check-only asr_pro/ tests/
 
       - name: Security scan (Bandit)
-        run: bandit -r asr_pro/ ASR/ -ll
+        run: bandit -r asr_pro/ tools/legacy_streamlit/ASR/ -ll
 
       - name: Dependency vulnerability audit
-        run: pip-audit -r requirements.txt || echo "⚠️ Audit found issues — review manually."
+        run: pip-audit -r requirements.txt
 
   # ─── Job 2: Backend Tests ─────────────────────────────────────────────────
   test-backend:
@@ -99,7 +99,7 @@ jobs:
           cache-dependency-path: "./package-lock.json"
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Lint (ESLint)
         run: npm run lint --if-present
