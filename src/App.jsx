@@ -40,14 +40,14 @@ function AnalyzePage() {
   const analyzeText = async () => {
     setStatus("analyzing");
     try {
-      await api.analyzeText(textInput);
+      const analysis = await api.analyzeText(textInput);
       const segments = [{ start: 0, end: 0, text: textInput }];
-      const saved = await api.analyze({
+      await api.analyze({
         segments,
         full_transcript: textInput,
         sector: "omni",
       });
-      setResult({ ...saved, preview: textInput });
+      setResult({ ...analysis, preview: textInput });
       toast.success("Analiz başarıyla tamamlandı!");
       setStatus("done");
     } catch (e) {
@@ -96,8 +96,8 @@ function AnalyzePage() {
             <>
               <div className="chip-row">
                 {result.topics?.map((t) => (
-                  <span className="chip topic" key={t.topic_id}>
-                    {t.label_tr}
+                  <span className="chip topic" key={t.topic_id || t.slug || t.label_tr}>
+                    {t.label_tr || t.topic_id}
                   </span>
                 ))}
               </div>
@@ -135,15 +135,26 @@ const NAV = [
 ];
 
 function App() {
-  const token = useAppStore((state) => state.token);
-  const setToken = useAppStore((state) => state.setToken);
+  const isAuthenticated = useAppStore((state) => state.isAuthenticated);
+  const setIsAuthenticated = useAppStore((state) => state.setIsAuthenticated);
   const sidebarOpen = useAppStore((state) => state.sidebarOpen);
   const setSidebarOpen = useAppStore((state) => state.setSidebarOpen);
   const alertCount = useAppStore((state) => state.alertCount);
   const setAlertCount = useAppStore((state) => state.setAlertCount);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
-    if (token) {
+    api.me().then(() => {
+      setIsAuthenticated(true);
+    }).catch(() => {
+      setIsAuthenticated(false);
+    }).finally(() => {
+      setIsInitializing(false);
+    });
+  }, [setIsAuthenticated]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
       api
         .alerts(false)
         .then((a) => setAlertCount(a.length))
@@ -151,20 +162,27 @@ function App() {
           toast.error("Uyarılar yüklenemedi");
         });
     }
-  }, [token, setAlertCount]);
+  }, [isAuthenticated, setAlertCount]);
 
-  const handleLogout = () => {
-    setToken(null);
-    toast.success("Çıkış yapıldı");
+  const handleLogout = async () => {
+    try {
+      await api.logout();
+      setIsAuthenticated(false);
+      toast.success("Çıkış yapıldı");
+    } catch {
+      toast.error("Çıkış başarısız");
+    }
   };
 
-  if (!token) {
+  if (isInitializing) return <div className="app-container"><div className="page-loading">Oturum kontrol ediliyor...</div></div>;
+
+  if (!isAuthenticated) {
     return (
       <>
         <Toaster position="top-right" />
         <LoginPage
-          onLogin={(newToken) => {
-            setToken(newToken);
+          onLogin={() => {
+            setIsAuthenticated(true);
             toast.success("Giriş başarılı");
           }}
         />
