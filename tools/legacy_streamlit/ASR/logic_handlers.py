@@ -24,57 +24,73 @@ _WhisperModel = None
 _BatchedInferencePipeline = None
 _ctranslate2 = None
 
+
 def get_torch():
     global _torch
     if _torch is None:
         import torch
+
         _torch = torch
     return _torch
+
 
 def get_matplotlib():
     global _plt
     if _plt is None:
         import matplotlib.pyplot as plt
+
         _plt = plt
     return _plt
+
 
 def get_wordcloud():
     global _WordCloud
     if _WordCloud is None:
         from wordcloud import WordCloud
+
         _WordCloud = WordCloud
     return _WordCloud
+
 
 def get_pipeline():
     global _pipeline
     if _pipeline is None:
         try:
             from transformers import pipeline
+
             _pipeline = pipeline
         except ImportError:
             _pipeline = False  # Mark as unavailable
     return _pipeline if _pipeline is not False else None
 
+
 def get_whisper_model_class():
     global _WhisperModel
     if _WhisperModel is None:
         from faster_whisper import WhisperModel
+
         _WhisperModel = WhisperModel
     return _WhisperModel
+
 
 def get_batched_pipeline_class():
     global _BatchedInferencePipeline
     if _BatchedInferencePipeline is None:
         from faster_whisper import BatchedInferencePipeline
+
         _BatchedInferencePipeline = BatchedInferencePipeline
     return _BatchedInferencePipeline
+
 
 def get_ctranslate2():
     global _ctranslate2
     if _ctranslate2 is None:
         import ctranslate2
+
         _ctranslate2 = ctranslate2
     return _ctranslate2
+
+
 def get_ffmpeg_path():
     """imageio-ffmpeg veya sistem FFmpeg yolunu güvenli şekilde döndürür."""
     session_path = st.session_state.get("ffmpeg_path")
@@ -85,14 +101,17 @@ def get_ffmpeg_path():
         return system_path
     try:
         import imageio_ffmpeg
+
         ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
         st.session_state["ffmpeg_path"] = ffmpeg_path
         return ffmpeg_path
     except Exception:
         return "ffmpeg"
 
+
 def resolve_model_name(model_size: str) -> str:
     return MODEL_NAME_MAP.get(model_size, model_size)
+
 
 def choose_device_and_compute():
     try:
@@ -140,6 +159,7 @@ def resolve_mlx_repo_name(actual_model: str) -> str:
 
 class MLXWhisperWrapper:
     """Mac cihazlar için donanımsal hızlandırıcı MLX kullanan adaptör sınıf."""
+
     def __init__(self, actual_model: str):
         self.actual_model = actual_model
         self.repo_name = resolve_mlx_repo_name(actual_model)
@@ -187,18 +207,23 @@ class MLXWhisperWrapper:
 
         res = mlx_whisper.transcribe(audio, path_or_hf_repo=self.repo_name, **mlx_kwargs)
 
-        Segment = namedtuple("Segment", ["start", "end", "text", "avg_logprob", "no_speech_prob", "compression_ratio", "words"])
+        Segment = namedtuple(
+            "Segment",
+            ["start", "end", "text", "avg_logprob", "no_speech_prob", "compression_ratio", "words"],
+        )
         segments = []
         for s in res.get("segments", []):
-            segments.append(Segment(
-                start=float(s.get("start", 0)),
-                end=float(s.get("end", 0)),
-                text=str(s.get("text", "")),
-                avg_logprob=float(s.get("avg_logprob", 0)),
-                no_speech_prob=float(s.get("no_speech_prob", 0)),
-                compression_ratio=float(s.get("compression_ratio", 1.0)),
-                words=s.get("words", [])
-            ))
+            segments.append(
+                Segment(
+                    start=float(s.get("start", 0)),
+                    end=float(s.get("end", 0)),
+                    text=str(s.get("text", "")),
+                    avg_logprob=float(s.get("avg_logprob", 0)),
+                    no_speech_prob=float(s.get("no_speech_prob", 0)),
+                    compression_ratio=float(s.get("compression_ratio", 1.0)),
+                    words=s.get("words", []),
+                )
+            )
 
         class Info:
             language = res.get("language") or mlx_kwargs.get("language", "tr")
@@ -207,15 +232,17 @@ class MLXWhisperWrapper:
 
         return segments, Info()
 
+
 @st.cache_resource
 def load_whisper_model(model_size: str, engine_type: str = "Windows"):
-
     """Donanıma göre MLX veya Faster-Whisper modelini yükler."""
     try:
         actual_model = resolve_model_name(model_size)
         if wants_apple_mlx_engine(engine_type):
             if not is_apple_silicon_host():
-                raise RuntimeError("Mac/MLX motoru yalnızca Apple Silicon macOS üzerinde kullanılabilir.")
+                raise RuntimeError(
+                    "Mac/MLX motoru yalnızca Apple Silicon macOS üzerinde kullanılabilir."
+                )
             return MLXWhisperWrapper(actual_model)
 
         WhisperModel = get_whisper_model_class()
@@ -235,6 +262,7 @@ def load_whisper_model(model_size: str, engine_type: str = "Windows"):
         st.error(f"❌ Whisper modeli yüklenirken hata: {e}")
         st.stop()
 
+
 @st.cache_resource
 def load_toxicity_classifier():
     """NLP sınıflandırıcısını yükler (Lazy import ile)."""
@@ -246,11 +274,12 @@ def load_toxicity_classifier():
             "sentiment-analysis",
             model=TOXICITY_CLASSIFIER_MODEL,
             tokenizer=TOXICITY_CLASSIFIER_MODEL,
-            return_all_scores=True
+            return_all_scores=True,
         )
         return classifier
     except Exception:
         return None
+
 
 # Modelleri aşağıda kullanıcı seçimine göre yükleyeceğiz
 # model = load_whisper_model(MODEL_SIZE)
@@ -258,8 +287,10 @@ def load_toxicity_classifier():
 
 # --- YARDIMCI FONSİYONLAR ---
 
+
 def format_timestamp(seconds: float) -> str:
     return str(timedelta(seconds=seconds)).split(".")[0]
+
 
 def create_srt(segments):
     """Segmentleri SRT formatına çevirir."""
@@ -268,8 +299,9 @@ def create_srt(segments):
         start = timedelta(seconds=segment.start)
         end = timedelta(seconds=segment.end)
         content = segment.text.strip()
-        subs.append(srt.Subtitle(index=i+1, start=start, end=end, content=content))
+        subs.append(srt.Subtitle(index=i + 1, start=start, end=end, content=content))
     return srt.compose(subs)
+
 
 def create_wordcloud(text):
     """Kelime bulutu görseli oluşturur (lazy import)."""
@@ -277,11 +309,14 @@ def create_wordcloud(text):
         return None
     WordCloud = get_wordcloud()
     plt = get_matplotlib()
-    wordcloud = WordCloud(width=800, height=400, background_color='black', colormap='viridis').generate(text)
+    wordcloud = WordCloud(
+        width=800, height=400, background_color="black", colormap="viridis"
+    ).generate(text)
     fig, ax = plt.subplots(figsize=(10, 5))
-    ax.imshow(wordcloud, interpolation='bilinear')
+    ax.imshow(wordcloud, interpolation="bilinear")
     ax.axis("off")
     return fig
+
 
 def diarize_audio(file_path, hf_token):
     """Pyannote ile konuşmacı ayrımı yapar."""
@@ -295,7 +330,7 @@ def diarize_audio(file_path, hf_token):
         pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization", use_auth_token=hf_token)
 
         if pipeline is None:
-             return "Model yüklenemedi. Token'ı kontrol edin veya Hugging Face üzerinden koşulları kabul ettiğinizden emin olun (pyannote/speaker-diarization)."
+            return "Model yüklenemedi. Token'ı kontrol edin veya Hugging Face üzerinden koşulları kabul ettiğinizden emin olun (pyannote/speaker-diarization)."
 
         # GPU varsa kullan
         torch = get_torch()
@@ -307,16 +342,18 @@ def diarize_audio(file_path, hf_token):
         # Sonuçları okunabilir formata çevir
         result_str = ""
         for turn, _, speaker in diarization.itertracks(yield_label=True):
-             result_str += f"start={turn.start:.1f}s stop={turn.end:.1f}s speaker_{speaker}\n"
+            result_str += f"start={turn.start:.1f}s stop={turn.end:.1f}s speaker_{speaker}\n"
 
         return result_str if result_str else "Konuşmacı ayrımı yapıldı ancak sonuç boş."
 
     except Exception as e:
         return f"Diarization Hatası: {str(e)}"
 
+
 # --- ZAMAN DAMGALI TRANSKRİPSİYON & KÜFÜR TESPİTİ FONKSİYONU ---
 def clamp(value, minimum=0.0, maximum=1.0):
     return max(minimum, min(maximum, value))
+
 
 def get_audio_duration_seconds(file_path: str):
     try:
@@ -328,6 +365,7 @@ def get_audio_duration_seconds(file_path: str):
     except Exception:
         return None
     return None
+
 
 def analyze_prepared_audio_quality(file_path: str):
     """16 kHz mono WAV üzerinden pratik ses kalitesi sinyalleri üretir."""
@@ -343,7 +381,9 @@ def analyze_prepared_audio_quality(file_path: str):
                     "audio_peak_dbfs": None,
                     "audio_clipped_percent": None,
                     "audio_silence_percent": None,
-                    "audio_quality_notes": ["PCM 16-bit olmadığı için detaylı kalite ölçümü sınırlı."],
+                    "audio_quality_notes": [
+                        "PCM 16-bit olmadığı için detaylı kalite ölçümü sınırlı."
+                    ],
                 }
 
             total_samples = 0
@@ -436,17 +476,19 @@ def analyze_prepared_audio_quality(file_path: str):
             "audio_quality_notes": [f"Ses kalite ölçümü yapılamadı: {exc}"],
         }
 
+
 def build_prepared_audio_path(file_path: str, variant: str = AUDIO_PREP_STANDARD) -> Path:
     source = Path(file_path)
     stat = source.stat()
     signature = f"{source.resolve()}:{stat.st_size}:{stat.st_mtime_ns}"
-    digest = hashlib.sha1(signature.encode("utf-8")).hexdigest()[:16]
+    digest = hashlib.sha256(signature.encode("utf-8")).hexdigest()[:16]
     safe_stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", source.stem)[:48] or "audio"
     safe_variant = re.sub(r"[^A-Za-z0-9_.-]+", "_", variant)[:24] or AUDIO_PREP_STANDARD
     variant_suffix = "" if safe_variant == AUDIO_PREP_STANDARD else f"-{safe_variant}"
     prepared_dir = Path(TEMP_AUDIO_DIR) / "prepared"
     prepared_dir.mkdir(parents=True, exist_ok=True)
     return prepared_dir / f"{safe_stem}-{digest}{variant_suffix}.wav"
+
 
 def prepare_audio_for_asr(file_path: str, variant: str = AUDIO_PREP_STANDARD):
     """ASR için 16 kHz mono PCM WAV üretir; düşük kalite codec'lerde doğruluğu artırır."""
@@ -490,7 +532,13 @@ def prepare_audio_for_asr(file_path: str, variant: str = AUDIO_PREP_STANDARD):
         (requested_label, variant, base_cmd + ["-af", requested_filter, str(prepared_path)]),
     ]
     if variant != AUDIO_PREP_STANDARD:
-        commands.append((standard_label, AUDIO_PREP_STANDARD, base_cmd + ["-af", standard_filter, str(prepared_path)]))
+        commands.append(
+            (
+                standard_label,
+                AUDIO_PREP_STANDARD,
+                base_cmd + ["-af", standard_filter, str(prepared_path)],
+            )
+        )
     commands.append(("Temel Dönüşüm", "raw", base_cmd + [str(prepared_path)]))
 
     last_error = ""
@@ -515,11 +563,13 @@ def prepare_audio_for_asr(file_path: str, variant: str = AUDIO_PREP_STANDARD):
 
     raise RuntimeError(f"Ses ön işleme başarısız oldu: {last_error}")
 
+
 def normalize_for_wer(text: str):
     text = (text or "").lower().replace("’", "'")
     text = re.sub(r"[^0-9a-zçğıöşü\s]", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text.split()
+
 
 def levenshtein_distance(reference_words, hypothesis_words):
     if not reference_words:
@@ -532,13 +582,16 @@ def levenshtein_distance(reference_words, hypothesis_words):
         current = [i]
         for j, hyp_word in enumerate(hypothesis_words, start=1):
             cost = 0 if ref_word == hyp_word else 1
-            current.append(min(
-                previous[j] + 1,
-                current[j - 1] + 1,
-                previous[j - 1] + cost,
-            ))
+            current.append(
+                min(
+                    previous[j] + 1,
+                    current[j - 1] + 1,
+                    previous[j - 1] + cost,
+                )
+            )
         previous = current
     return previous[-1]
+
 
 def calculate_word_accuracy(reference_text: str, hypothesis_text: str):
     reference_words = normalize_for_wer(reference_text)
@@ -565,6 +618,7 @@ def calculate_word_accuracy(reference_text: str, hypothesis_text: str):
         "hypothesis_words": len(hypothesis_words),
         "correct_estimate": correct_estimate,
     }
+
 
 BANKING_DEFAULT_HOTWORDS = """
 KMH
@@ -611,21 +665,39 @@ BANKING_CORRECTION_PATTERNS = [
     (r"\bgörüntülebilmek\b", "görüntüleyebilmek"),
     (r"\bürünseye?bilmek\b", "görüntüleyebilmek"),
     (r"telefon bankacınızı kullanmanız gerekiyor", "telefon bankacılığınızı kullanmanız gerekiyor"),
-    (r"telefon bankacılınızı kullanmanız gerekiyor", "telefon bankacılığınızı kullanmanız gerekiyor"),
+    (
+        r"telefon bankacılınızı kullanmanız gerekiyor",
+        "telefon bankacılığınızı kullanmanız gerekiyor",
+    ),
     (r"telefon bankacını kullanmanız gerekiyor", "telefon bankacılığınızı kullanmanız gerekiyor"),
     (r"telefon bankacını kullanıyor(?:muş)?sunuz\??", "telefon bankacılığını kullanıyor musunuz?"),
-    (r"telefon bankacınızı kullanıyor(?:muş)?sunuz\??", "telefon bankacılığını kullanıyor musunuz?"),
+    (
+        r"telefon bankacınızı kullanıyor(?:muş)?sunuz\??",
+        "telefon bankacılığını kullanıyor musunuz?",
+    ),
     (r"telefon manzar\w*", "telefon bankacılığı şifrenizi"),
-    (r"telefon mankacı işletmeniz oluşturmuş mu\??", "telefon bankacılığı şifreniz oluşturulmuş mu?"),
-    (r"telefon mankajı işleykeniz oluşturmuş mu\??", "telefon bankacılığı şifreniz oluşturulmuş mu?"),
+    (
+        r"telefon mankacı işletmeniz oluşturmuş mu\??",
+        "telefon bankacılığı şifreniz oluşturulmuş mu?",
+    ),
+    (
+        r"telefon mankajı işleykeniz oluşturmuş mu\??",
+        "telefon bankacılığı şifreniz oluşturulmuş mu?",
+    ),
     (r"telefon makacı işiniz oluşturmuş mu\??", "telefon bankacılığı şifreniz oluşturulmuş mu?"),
-    (r"telefon bankacı işçilerine dolaşıyormuş muyuz\??", "telefon bankacılığı şifreniz oluşturulmuş mu?"),
+    (
+        r"telefon bankacı işçilerine dolaşıyormuş muyuz\??",
+        "telefon bankacılığı şifreniz oluşturulmuş mu?",
+    ),
     (r"telefon mankacı işlemek oluşturmuş mu\??", "telefon bankacılığı şifreniz oluşturulmuş mu?"),
     (r"\bmankacı\b", "bankacılığı"),
     (r"\bhetaplarınızı\b", "hesaplarınızı"),
     (r"\bhetaplariniz\b", "hesaplarınızı"),
     (r"\bsanımlı\b", "tanımlı"),
-    (r"hesaplarınızı görebilmemiz için telefon bankacılığı şifrenizi kullanmanız gerekiyor", "hesaplarınızı görebilmemiz için telefon bankacılığı şifrenizi kullanmanız gerekiyor"),
+    (
+        r"hesaplarınızı görebilmemiz için telefon bankacılığı şifrenizi kullanmanız gerekiyor",
+        "hesaplarınızı görebilmemiz için telefon bankacılığı şifrenizi kullanmanız gerekiyor",
+    ),
     (r"\bşeker\s*bank\b", "Şekerbank"),
     (r"Şekerbank'layın", "Şekerbank'la"),
     (r"Şekerbank'la[yıi]n", "Şekerbank'la"),
@@ -775,11 +847,13 @@ INSURANCE_TERMS = [
     "sağlık sigortası",
 ]
 
+
 def combine_patterns(*pattern_groups):
     combined = []
     for group in pattern_groups:
         combined.extend(group)
     return tuple(combined)
+
 
 def combine_terms(*term_groups):
     seen = set()
@@ -791,6 +865,7 @@ def combine_terms(*term_groups):
                 seen.add(key)
                 combined.append(term)
     return tuple(combined)
+
 
 DOMAIN_PROFILES = {
     "omni": DomainProfile(
@@ -804,7 +879,13 @@ DOMAIN_PROFILES = {
             INSURANCE_CORRECTION_PATTERNS,
         ),
         canonical={**BANKING_TOKEN_CANONICAL},
-        close_terms=combine_terms(GENERIC_SERVICE_TERMS, BANKING_CLOSE_TERMS, TELECOM_TERMS, ECOMMERCE_TERMS, INSURANCE_TERMS),
+        close_terms=combine_terms(
+            GENERIC_SERVICE_TERMS,
+            BANKING_CLOSE_TERMS,
+            TELECOM_TERMS,
+            ECOMMERCE_TERMS,
+            INSURANCE_TERMS,
+        ),
     ),
     "banking": DomainProfile(
         label="Bankacılık",
@@ -844,18 +925,23 @@ DOMAIN_PROFILES = {
     ),
 }
 
+
 def preserve_first_char_case(original: str, replacement: str):
     if original and original[0].isupper():
         return replacement[:1].upper() + replacement[1:]
     return replacement
 
+
 def apply_case_preserving_regex(text: str, pattern: str, replacement: str):
     def repl(match):
         return preserve_first_char_case(match.group(0), replacement)
+
     return re.sub(pattern, repl, text, flags=re.IGNORECASE)
+
 
 def fuzzy_ratio(left: str, right: str):
     return SequenceMatcher(None, left.lower(), right.lower()).ratio()
+
 
 def parse_custom_terms(custom_terms: str):
     if not custom_terms:
@@ -873,8 +959,10 @@ def parse_custom_terms(custom_terms: str):
             cleaned.append(term)
     return cleaned
 
+
 def get_domain_profile(domain_key: str):
     return DOMAIN_PROFILES.get(domain_key, DOMAIN_PROFILES["omni"])
+
 
 def build_domain_hotwords(domain_key: str, custom_terms: str = ""):
     """Sektör sözlüğünü ve kullanıcı terimlerini ASR hotword listesine çevirir."""
@@ -899,6 +987,7 @@ def build_domain_hotwords(domain_key: str, custom_terms: str = ""):
         unique_terms.append(term)
     return "\n".join(unique_terms[:180])
 
+
 def correct_domain_tokens(text: str, domain_profile: DomainProfile, custom_terms=None):
     custom_terms = custom_terms or []
     canonical = domain_profile.canonical or {}
@@ -917,11 +1006,17 @@ def correct_domain_tokens(text: str, domain_profile: DomainProfile, custom_terms
                 if fuzzy_ratio(stripped, best_custom) >= 0.80:
                     return preserve_first_char_case(token, best_custom)
         if len(stripped) >= 7:
-            best_term = max(close_terms, key=lambda term: fuzzy_ratio(stripped, term)) if close_terms else ""
+            best_term = (
+                max(close_terms, key=lambda term: fuzzy_ratio(stripped, term))
+                if close_terms
+                else ""
+            )
             if best_term and fuzzy_ratio(stripped, best_term) >= 0.93:
                 return preserve_first_char_case(token, best_term)
         return token
+
     return re.sub(r"[A-Za-zÇĞİÖŞÜçğıöşü']+", replace_token, text)
+
 
 def tidy_transcript_text(text: str):
     text = re.sub(r"\s+([?.!,;:])", r"\1", text)
@@ -930,6 +1025,7 @@ def tidy_transcript_text(text: str):
     if text:
         text = text[0].upper() + text[1:]
     return text
+
 
 def apply_domain_corrections(text: str, domain_key: str = "omni", custom_terms: str = ""):
     corrected = text or ""
@@ -940,19 +1036,25 @@ def apply_domain_corrections(text: str, domain_key: str = "omni", custom_terms: 
     corrected = tidy_transcript_text(corrected)
     return corrected
 
+
 def apply_banking_domain_corrections(text: str):
     return apply_domain_corrections(text, "banking")
 
-def postprocess_transcript_text(text: str, profile_key: str, domain_key: str = "omni", custom_terms: str = ""):
+
+def postprocess_transcript_text(
+    text: str, profile_key: str, domain_key: str = "omni", custom_terms: str = ""
+):
     cleaned = tidy_transcript_text(text)
     if profile_key == "banking" or domain_key != "none":
         return apply_domain_corrections(cleaned, domain_key, custom_terms)
     return cleaned
 
+
 def domain_correction_count(raw_text: str, corrected_text: str):
     raw_words = normalize_for_wer(raw_text)
     corrected_words = normalize_for_wer(corrected_text)
     return levenshtein_distance(raw_words, corrected_words)
+
 
 def build_initial_prompt(hotwords: str = ""):
     terms = parse_custom_terms(hotwords)
@@ -961,10 +1063,8 @@ def build_initial_prompt(hotwords: str = ""):
     term_text = ", ".join(terms[:ASR_INITIAL_PROMPT_TERM_LIMIT])
     if len(term_text) > ASR_INITIAL_PROMPT_CHAR_LIMIT:
         term_text = term_text[:ASR_INITIAL_PROMPT_CHAR_LIMIT].rsplit(",", 1)[0]
-    return (
-        "Türkçe çağrı merkezi kaydı. Terimleri doğru yaz: "
-        f"{term_text}."
-    )
+    return "Türkçe çağrı merkezi kaydı. Terimleri doğru yaz: " f"{term_text}."
+
 
 def build_transcribe_options(profile: ASRProfile, lang: str, task: str, hotwords: str = ""):
     clean_hotwords = hotwords.strip() or None
@@ -1000,9 +1100,11 @@ def build_transcribe_options(profile: ASRProfile, lang: str, task: str, hotwords
         }
     return options
 
+
 def is_whisper_context_error(error: Exception):
     message = str(error)
     return any(marker in message for marker in ASR_CONTEXT_ERROR_MARKERS)
+
 
 def build_safe_transcribe_options(options: dict):
     safe_options = dict(options)
@@ -1020,9 +1122,11 @@ def build_safe_transcribe_options(options: dict):
     safe_options["best_of"] = min(int(safe_options.get("best_of") or 3), 3)
     return safe_options
 
+
 def materialize_transcription(engine, prepared_path: str, options: dict):
     segments, info = engine.transcribe(prepared_path, **options)
     return list(segments), info
+
 
 def transcribe_segments_with_rescue(model, prepared_path: str, profile: ASRProfile, options: dict):
     """Whisper bağlam sınırı hatalarında güvenli motora otomatik düşer."""
@@ -1053,13 +1157,15 @@ def transcribe_segments_with_rescue(model, prepared_path: str, profile: ASRProfi
     segments, info = materialize_transcription(model, prepared_path, safe_options)
     return segments, info, True
 
+
 def repeated_ngram_ratio(words, n=3):
     if len(words) < n * 2:
         return 0.0
-    ngrams = [tuple(words[i:i + n]) for i in range(len(words) - n + 1)]
+    ngrams = [tuple(words[i : i + n]) for i in range(len(words) - n + 1)]
     if not ngrams:
         return 0.0
     return 1.0 - (len(set(ngrams)) / len(ngrams))
+
 
 def is_suspicious_asr_segment(segment, text: str):
     """Apple-level agresif halüsinasyon tespiti."""
@@ -1093,15 +1199,18 @@ def is_suspicious_asr_segment(segment, text: str):
         return True
     return False
 
+
 def segment_duration(segment):
     return max(0.0, float(segment.end) - float(segment.start))
+
 
 def overlap_seconds(first_segment, second_segment):
     return max(
         0.0,
-        min(float(first_segment.end), float(second_segment.end)) -
-        max(float(first_segment.start), float(second_segment.start))
+        min(float(first_segment.end), float(second_segment.end))
+        - max(float(first_segment.start), float(second_segment.start)),
     )
+
 
 def filtered_segment_record(segment, reason: str):
     return {
@@ -1112,6 +1221,7 @@ def filtered_segment_record(segment, reason: str):
         "reason": reason,
     }
 
+
 def should_drop_previous_for_overlap(previous_segment, current_segment):
     overlap = overlap_seconds(previous_segment, current_segment)
     if overlap < 1.0:
@@ -1120,6 +1230,7 @@ def should_drop_previous_for_overlap(previous_segment, current_segment):
     current_duration = segment_duration(current_segment)
     return previous_duration > max(12.0, current_duration * 3.0)
 
+
 def should_drop_current_for_overlap(previous_segment, current_segment):
     overlap = overlap_seconds(previous_segment, current_segment)
     if overlap < 1.0:
@@ -1127,6 +1238,7 @@ def should_drop_current_for_overlap(previous_segment, current_segment):
     previous_duration = segment_duration(previous_segment)
     current_duration = segment_duration(current_segment)
     return current_duration > max(12.0, previous_duration * 3.0)
+
 
 def iter_stable_segments(segments, filtered_segments):
     pending = None
@@ -1145,6 +1257,7 @@ def iter_stable_segments(segments, filtered_segments):
         pending = segment
     if pending is not None:
         yield pending
+
 
 TOKEN_PATTERN = re.compile(r"[0-9A-Za-zÇĞİÖŞÜçğıöşü@!*]+")
 SWEAR_PREFIX_STEMS = (
@@ -1179,12 +1292,14 @@ SWEAR_PREFIX_EXCLUSIONS = (
     "yonlendir",
 )
 
+
 def normalize_swear_match_token(value: str):
     value = (value or "").lower().strip()
     value = value.replace("1", "i").replace("!", "i").replace("@", "a").replace("0", "o")
     value = value.replace("*", "")
     value = re.sub(r"(.)\1{2,}", r"\1\1", value)
     return value
+
 
 def build_swear_match_sets(swear_list):
     exact_terms = set()
@@ -1201,14 +1316,18 @@ def build_swear_match_sets(swear_list):
     phrase_terms.sort(key=len, reverse=True)
     return exact_terms, phrase_terms
 
+
 def is_safe_swear_substring_hit(word: str):
     return any(word.startswith(prefix) for prefix in SWEAR_PREFIX_EXCLUSIONS)
+
 
 def detect_swears_in_segment(text: str, start_time: float, swear_list):
     detected = []
     seen = set()
     exact_terms, phrase_terms = build_swear_match_sets(swear_list)
-    tokens = [normalize_swear_match_token(match.group(0)) for match in TOKEN_PATTERN.finditer(text or "")]
+    tokens = [
+        normalize_swear_match_token(match.group(0)) for match in TOKEN_PATTERN.finditer(text or "")
+    ]
     tokens = [token for token in tokens if token]
     covered_token_indexes = set()
 
@@ -1221,7 +1340,7 @@ def detect_swears_in_segment(text: str, start_time: float, swear_list):
     for phrase in phrase_terms:
         phrase_len = len(phrase)
         for idx in range(0, max(0, len(tokens) - phrase_len + 1)):
-            if tuple(tokens[idx:idx + phrase_len]) == phrase:
+            if tuple(tokens[idx : idx + phrase_len]) == phrase:
                 add_detection(" ".join(phrase))
                 covered_token_indexes.update(range(idx, idx + phrase_len))
 
@@ -1239,6 +1358,7 @@ def detect_swears_in_segment(text: str, start_time: float, swear_list):
                 break
 
     return detected
+
 
 def summarize_transcription_quality(segments_data):
     if not segments_data:
@@ -1278,6 +1398,7 @@ def summarize_transcription_quality(segments_data):
         "avg_no_speech_prob": avg_no_speech_prob,
         "repetition_risk": repetition_risk,
     }
+
 
 def transcribe_with_profile(
     model,
@@ -1400,6 +1521,7 @@ def transcribe_with_profile(
         "prepared_path": prepared_path,
     }
 
+
 def should_retry_transcription(candidate, source_profile: ASRProfile):
     metrics = candidate["metrics"]
     if not source_profile.retry_profile_key:
@@ -1412,7 +1534,10 @@ def should_retry_transcription(candidate, source_profile: ASRProfile):
         return True
     return False
 
-def retry_has_latency_budget(model, overall_started: float, target_latency_s: int, primary_candidate):
+
+def retry_has_latency_budget(
+    model, overall_started: float, target_latency_s: int, primary_candidate
+):
     """İkinci kalite geçişini sadece SLA süresini patlatmayacaksa çalıştır."""
     if not target_latency_s:
         return True
@@ -1421,26 +1546,38 @@ def retry_has_latency_budget(model, overall_started: float, target_latency_s: in
         return False
 
     primary_elapsed = float(primary_candidate["metrics"].get("pass_elapsed_s") or elapsed or 0.0)
-    estimated_retry_s = max(ASR_RETRY_MIN_REMAINING_SECONDS, primary_elapsed * ASR_RETRY_ESTIMATE_MULTIPLIER)
+    estimated_retry_s = max(
+        ASR_RETRY_MIN_REMAINING_SECONDS, primary_elapsed * ASR_RETRY_ESTIMATE_MULTIPLIER
+    )
     remaining_s = target_latency_s - elapsed
 
     if is_mlx_model(model) and target_latency_s <= TARGET_LATENCY_SECONDS:
         return remaining_s >= estimated_retry_s
     return remaining_s >= min(estimated_retry_s, target_latency_s * 0.45)
 
+
 def pick_best_transcription_candidate(candidates):
     return max(candidates, key=lambda item: item["metrics"].get("candidate_score", 0.0))
 
+
 def build_formatted_transcript(best_candidate, run_metrics, retry_candidates, target_latency_s):
-    formatted_text = f"ASR PRO - DETAYLI DÖKÜM\nTarih: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
+    formatted_text = (
+        f"ASR PRO - DETAYLI DÖKÜM\nTarih: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
+    )
     formatted_text += f"Profil: {run_metrics['profile_label']}\n"
     if run_metrics.get("batched_fallback"):
-        formatted_text += "Motor Koruması: Batched sınır hatası algılandı, güvenli ASR geçişi kullanıldı.\n"
+        formatted_text += (
+            "Motor Koruması: Batched sınır hatası algılandı, güvenli ASR geçişi kullanıldı.\n"
+        )
     if retry_candidates:
-        retry_labels = ", ".join(candidate["metrics"]["profile_label"] for candidate in retry_candidates)
+        retry_labels = ", ".join(
+            candidate["metrics"]["profile_label"] for candidate in retry_candidates
+        )
         formatted_text += f"Kalite Yeniden Deneme: Aktif ({retry_labels})\n"
     elif run_metrics.get("quality_retry_skipped_for_latency"):
-        formatted_text += "Kalite Yeniden Deneme: Süre hedefi için atlandı; kalite kapısı uyarısı korunur.\n"
+        formatted_text += (
+            "Kalite Yeniden Deneme: Süre hedefi için atlandı; kalite kapısı uyarısı korunur.\n"
+        )
     if run_metrics.get("duration"):
         formatted_text += f"Ses Süresi: {run_metrics['duration']:.1f}s\n"
     formatted_text += f"Ön İşleme: {run_metrics.get('preprocess_label', 'Standart Netleştirme')}\n"
@@ -1451,7 +1588,9 @@ def build_formatted_transcript(best_candidate, run_metrics, retry_candidates, ta
     if run_metrics["rtf"] is not None:
         formatted_text += f"RTF: {run_metrics['rtf']:.2f}x\n"
     formatted_text += f"ASR Güveni: %{run_metrics['confidence']:.1f}\n"
-    formatted_text += f"Kalite Kapısı: {'Geçti' if run_metrics['quality_gate_met'] else 'İnceleme Gerekli'}\n"
+    formatted_text += (
+        f"Kalite Kapısı: {'Geçti' if run_metrics['quality_gate_met'] else 'İnceleme Gerekli'}\n"
+    )
     formatted_text += f"Ses Kalitesi: %{run_metrics.get('audio_quality_score', 0):.0f} ({run_metrics.get('audio_quality_label', '-')})\n"
     formatted_text += f"Filtrelenen Şüpheli Segment: {run_metrics['filtered_segments']}\n"
     formatted_text += f"Sektör Düzeltmesi: {run_metrics['domain_label'] if run_metrics['domain_mode'] else 'Kapalı'}"
@@ -1468,7 +1607,9 @@ def apply_sota_features(candidate, model, domain_key, combined_hotwords, lang, s
     """SOTA özelliklerini (per-segment redecode & punctuation) en iyi adaya uygular."""
     # 1. Per-segment redecode
     segments = candidate["segments_data"]
-    latency_guard_active = st.session_state.get("target_latency_s", TARGET_LATENCY_SECONDS) <= TARGET_LATENCY_SECONDS
+    latency_guard_active = (
+        st.session_state.get("target_latency_s", TARGET_LATENCY_SECONDS) <= TARGET_LATENCY_SECONDS
+    )
     if (
         st.session_state.get("apple_mode", False)
         and not latency_guard_active
@@ -1503,6 +1644,7 @@ def apply_sota_features(candidate, model, domain_key, combined_hotwords, lang, s
     candidate["formatted_body"] = formatted_body
     candidate["detected_swears"] = detected_swears
     return candidate
+
 
 def transcribe_audio_file(
     model,
@@ -1542,7 +1684,9 @@ def transcribe_audio_file(
     if should_retry_transcription(primary_candidate, source_profile):
         retry_key = source_profile.retry_profile_key
         if retry_has_latency_budget(model, overall_started, target_latency_s, primary_candidate):
-            retry_prepared_path, retry_prep_info = prepare_audio_for_asr(file_path, AUDIO_PREP_RESCUE)
+            retry_prepared_path, retry_prep_info = prepare_audio_for_asr(
+                file_path, AUDIO_PREP_RESCUE
+            )
             retry_candidate = transcribe_with_profile(
                 model,
                 retry_prepared_path,
@@ -1564,7 +1708,9 @@ def transcribe_audio_file(
     best_candidate = pick_best_transcription_candidate(candidates)
 
     # Apply SOTA features
-    best_candidate = apply_sota_features(best_candidate, model, domain_key, combined_hotwords, lang, swear_list)
+    best_candidate = apply_sota_features(
+        best_candidate, model, domain_key, combined_hotwords, lang, swear_list
+    )
 
     elapsed_s = time.perf_counter() - overall_started
     best_prep_info = best_candidate.get("prep_info", prep_info)
@@ -1593,7 +1739,9 @@ def transcribe_audio_file(
         "primary_profile_label": primary_candidate["metrics"]["profile_label"],
         "selected_profile_label": best_metrics["profile_label"],
     }
-    formatted_text = build_formatted_transcript(best_candidate, run_metrics, retry_candidates, target_latency_s)
+    formatted_text = build_formatted_transcript(
+        best_candidate, run_metrics, retry_candidates, target_latency_s
+    )
 
     return (
         formatted_text,
@@ -1604,10 +1752,8 @@ def transcribe_audio_file(
         run_metrics,
     )
 
+
 # ... (Previous Code) ...
-
-
-
 
 
 def consensus_transcribe(
@@ -1622,7 +1768,7 @@ def consensus_transcribe(
     target_latency_s: int = TARGET_LATENCY_SECONDS,
 ) -> tuple:
     """Apple-level multi-pass konsensüs dekodlama.
-    
+
     Aynı sesi 3 farklı stratejiyle çözer ve segment bazında
     en yüksek güvenli olanı seçerek nihai transkripti oluşturur.
     """
@@ -1658,9 +1804,17 @@ def consensus_transcribe(
     # === GEÇİŞ 1: apex_quality profili (beam=10, temp=0.0, standard ses) ===
     try:
         c1 = transcribe_with_profile(
-            model, prepared_standard, prep_standard,
-            "apex_quality", lang, swear_list, task, domain_key, combined_hotwords,
-            progress_callback=progress_callback, overall_started=overall_started,
+            model,
+            prepared_standard,
+            prep_standard,
+            "apex_quality",
+            lang,
+            swear_list,
+            task,
+            domain_key,
+            combined_hotwords,
+            progress_callback=progress_callback,
+            overall_started=overall_started,
         )
         candidates.append(c1)
     except Exception:
@@ -1669,9 +1823,17 @@ def consensus_transcribe(
     # === GEÇİŞ 2: ultimate_accuracy profili (farklı beam/chunk, standard ses) ===
     try:
         c2 = transcribe_with_profile(
-            model, prepared_standard, prep_standard,
-            "ultimate_accuracy", lang, swear_list, task, domain_key, combined_hotwords,
-            progress_callback=progress_callback, overall_started=overall_started,
+            model,
+            prepared_standard,
+            prep_standard,
+            "ultimate_accuracy",
+            lang,
+            swear_list,
+            task,
+            domain_key,
+            combined_hotwords,
+            progress_callback=progress_callback,
+            overall_started=overall_started,
         )
         candidates.append(c2)
     except Exception:
@@ -1680,9 +1842,17 @@ def consensus_transcribe(
     # === GEÇİŞ 3: rescue profili (kötü ses kurtarma filtresiyle) ===
     try:
         c3 = transcribe_with_profile(
-            model, prepared_apex, prep_apex,
-            "rescue", lang, swear_list, task, domain_key, combined_hotwords,
-            progress_callback=progress_callback, overall_started=overall_started,
+            model,
+            prepared_apex,
+            prep_apex,
+            "rescue",
+            lang,
+            swear_list,
+            task,
+            domain_key,
+            combined_hotwords,
+            progress_callback=progress_callback,
+            overall_started=overall_started,
         )
         candidates.append(c3)
     except Exception:
@@ -1691,16 +1861,25 @@ def consensus_transcribe(
     if not candidates:
         # Fallback: normal transcribe
         return transcribe_audio_file(
-            model, file_path, lang, swear_list, task,
-            "apex_quality", domain_key, hotwords,
-            progress_callback, target_latency_s,
+            model,
+            file_path,
+            lang,
+            swear_list,
+            task,
+            "apex_quality",
+            domain_key,
+            hotwords,
+            progress_callback,
+            target_latency_s,
         )
 
     # Konsensüs: en yüksek candidate_score'a sahip olanı seç
     best_candidate = pick_best_transcription_candidate(candidates)
 
     # Apply SOTA features
-    best_candidate = apply_sota_features(best_candidate, model, domain_key, combined_hotwords, lang, swear_list)
+    best_candidate = apply_sota_features(
+        best_candidate, model, domain_key, combined_hotwords, lang, swear_list
+    )
 
     elapsed_s = time.perf_counter() - overall_started
 
@@ -1759,16 +1938,29 @@ def auto_select_profile(audio_quality_score: float) -> str:
 
 # --- SEGMENT DÜZEYINDE YENİDEN ÇÖZME (PER-SEGMENT RE-DECODE) ---
 
+
 def extract_audio_segment_ffmpeg(source_path: str, start_s: float, end_s: float, output_path: str):
     """FFmpeg ile ses dosyasından belirli bir zaman aralığını keser."""
     ffmpeg_path = get_ffmpeg_path()
     duration = end_s - start_s
     cmd = [
-        ffmpeg_path, "-hide_banner", "-loglevel", "error", "-y",
-        "-i", str(source_path),
-        "-ss", str(start_s),
-        "-t", str(duration),
-        "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le",
+        ffmpeg_path,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        str(source_path),
+        "-ss",
+        str(start_s),
+        "-t",
+        str(duration),
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-c:a",
+        "pcm_s16le",
         str(output_path),
     ]
     try:
@@ -1779,11 +1971,15 @@ def extract_audio_segment_ffmpeg(source_path: str, start_s: float, end_s: float,
 
 
 def redecode_low_confidence_segments(
-    model, prepared_path: str, segments_data, domain_key: str = "omni",
-    combined_hotwords: str = "", lang: str = "tr",
+    model,
+    prepared_path: str,
+    segments_data,
+    domain_key: str = "omni",
+    combined_hotwords: str = "",
+    lang: str = "tr",
 ):
     """Düşük güvenli segmentleri izole edip farklı parametrelerle yeniden çözer.
-    
+
     Apple/Google seviyesi: avg_logprob < -0.7 olan her segmenti keser,
     çevresindeki metnin bağlamını prompt olarak verir ve beam=10 ile tekrar çözer.
     """
@@ -1830,9 +2026,15 @@ def redecode_low_confidence_segments(
                 "no_speech_threshold": 0.3,
                 "condition_on_previous_text": False,
                 "no_repeat_ngram_size": 5,
-                "initial_prompt": f"Türkçe çağrı merkezi kaydı. {context_prompt}" if context_prompt else None,
+                "initial_prompt": f"Türkçe çağrı merkezi kaydı. {context_prompt}"
+                if context_prompt
+                else None,
                 "vad_filter": True,
-                "vad_parameters": {"threshold": 0.15, "min_silence_duration_ms": 300, "speech_pad_ms": 200},
+                "vad_parameters": {
+                    "threshold": 0.15,
+                    "min_silence_duration_ms": 300,
+                    "speech_pad_ms": 200,
+                },
                 "word_timestamps": False,
                 "without_timestamps": False,
                 "max_new_tokens": ASR_MAX_NEW_TOKENS,
@@ -1860,8 +2062,12 @@ def redecode_low_confidence_segments(
                         end=seg.end,
                         text=corrected_text,
                         avg_logprob=retry_logprob,
-                        no_speech_prob=float(getattr(retry_segments[0], "no_speech_prob", 0.0) or 0.0),
-                        compression_ratio=float(getattr(retry_segments[0], "compression_ratio", 1.0) or 1.0),
+                        no_speech_prob=float(
+                            getattr(retry_segments[0], "no_speech_prob", 0.0) or 0.0
+                        ),
+                        compression_ratio=float(
+                            getattr(retry_segments[0], "compression_ratio", 1.0) or 1.0
+                        ),
                         raw_text=retry_text,
                     )
                     redecoded_count += 1
@@ -1879,8 +2085,7 @@ def redecode_low_confidence_segments(
 # --- TÜRKÇE NOKTALAMA RESTORASYONU ---
 
 _TURKISH_SENTENCE_ENDERS = re.compile(
-    r"(?<=[a-zçğıöşüA-ZÇĞİÖŞÜ0-9])\s+"
-    r"(?=[A-ZÇĞİÖŞÜ])",
+    r"(?<=[a-zçğıöşüA-ZÇĞİÖŞÜ0-9])\s+" r"(?=[A-ZÇĞİÖŞÜ])",
 )
 
 _TURKISH_QUESTION_MARKERS = [
@@ -1888,9 +2093,10 @@ _TURKISH_QUESTION_MARKERS = [
     r"\b(?:ne|neden|niye|nasıl|nerede|kim|kaç|hangi|ne zaman)\b",
 ]
 
+
 def restore_turkish_punctuation(text: str) -> str:
     """Kural-tabanlı Türkçe noktalama restorasyonu.
-    
+
     ASR çıktısında genellikle noktalama eksik olur. Bu fonksiyon:
     1. Büyük harfle başlayan yeni cümlelerin önüne nokta ekler
     2. Soru kalıplarını tespit edip soru işareti ekler
@@ -1903,7 +2109,7 @@ def restore_turkish_punctuation(text: str) -> str:
     result = text
 
     # Soru ekleri tespit et ve sonuna ? ekle
-    sentences = re.split(r'(?<=[.?!])\s+', result)
+    sentences = re.split(r"(?<=[.?!])\s+", result)
     fixed_sentences = []
     for sentence in sentences:
         sentence = sentence.strip()
@@ -1917,11 +2123,11 @@ def restore_turkish_punctuation(text: str) -> str:
                 break
 
         # Eğer cümle hiçbir noktalama ile bitmiyorsa
-        if sentence and sentence[-1] not in '.?!':
+        if sentence and sentence[-1] not in ".?!":
             if is_question:
-                sentence += '?'
+                sentence += "?"
             else:
-                sentence += '.'
+                sentence += "."
 
         # İlk harf büyük olsun
         if sentence:
@@ -1929,7 +2135,7 @@ def restore_turkish_punctuation(text: str) -> str:
 
         fixed_sentences.append(sentence)
 
-    result = ' '.join(fixed_sentences)
+    result = " ".join(fixed_sentences)
     return result
 
 
@@ -1952,10 +2158,10 @@ def analyze_toxicity(text: str, classifier):
         positive_score = 0
 
         for item in results[0]:
-            if 'negative' in item['label'].lower():
-                negative_score = item['score']
-            elif 'positive' in item['label'].lower():
-                positive_score = item['score']
+            if "negative" in item["label"].lower():
+                negative_score = item["score"]
+            elif "positive" in item["label"].lower():
+                positive_score = item["score"]
 
         if negative_score > 0.7 and negative_score > positive_score:
             toxicity_label = "Yüksek Negatif/Toksik"
@@ -1968,5 +2174,6 @@ def analyze_toxicity(text: str, classifier):
 
     except Exception:
         return "NLP Hata", 0.0
+
 
 # --- YARDIMCI GÖRÜNTÜLEME FONKSİYONU ---
