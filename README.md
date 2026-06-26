@@ -1,134 +1,417 @@
 <div align="center">
 
-# ASR-Pro: Enterprise Speech Intelligence Platform
+# ASR-Pro
 
-[![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688.svg?logo=fastapi)](https://fastapi.tiangolo.com)
-[![React](https://img.shields.io/badge/React-19.0-61DAFB.svg?logo=react)](https://react.dev/)
-[![Docker Pulls](https://img.shields.io/docker/pulls/ardamoustafa/asr-pro-backend.svg)](https://hub.docker.com/r/ardamoustafa/asr-pro-backend)
-[![Coverage](https://img.shields.io/badge/Coverage-90%25-brightgreen.svg)]()
-[![GitHub Stars](https://img.shields.io/github/stars/ardamoustafa/ASR-Pro?style=social)](https://github.com/ardamoustafa/ASR-Pro/stargazers)
-[![GitHub Last Commit](https://img.shields.io/github/last-commit/ardamoustafa/ASR-Pro)](https://github.com/ardamoustafa/ASR-Pro/commits/main)
-[![GitHub Open Issues](https://img.shields.io/github/issues/ardamoustafa/ASR-Pro)](https://github.com/ardamoustafa/ASR-Pro/issues)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+### Enterprise Speech Intelligence for Contact Centers
 
-_An advanced, zero-shot AI-powered speech intelligence platform designed for enterprise contact centers. Converts speech to text and analyzes sentiment, churn risk, compliance, and empathy in real-time._
+Turn live or recorded customer conversations into transcripts, compliance signals, churn risk, empathy scores, keyword alerts, and executive-ready analytics.
 
-[Türkçe Dokümantasyon (Turkish README)](README_TR.md) • [API Documentation](docs/api.md) • [Architecture](docs/ARCHITECTURE.md)
+[![Python](https://img.shields.io/badge/Python-3.9+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
+[![Coverage](https://img.shields.io/badge/Coverage-88%25-16a34a)]()
+[![Security Audit](https://img.shields.io/badge/Audit-passing-16a34a)]()
+[![License: MIT](https://img.shields.io/badge/License-MIT-f59e0b.svg)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/ardamoustafa/ASR-Pro?style=social)](https://github.com/ardamoustafa/ASR-Pro/stargazers)
 
-### 📸 Dashboard & Interface
+<br />
 
-| Modern React Dashboard                   | Live ASR & Keyword Analysis | Real-time Analytics                       |
-| ---------------------------------------- | --------------------------- | ----------------------------------------- |
-| ![](docs/screenshots/dashboard_dark.png) | ![](docs/assets/demo.gif)   | ![](docs/screenshots/analytics_trend.png) |
+<a href="#quick-start"><strong>Quick Start</strong></a>
+ ·
+<a href="docs/api.md"><strong>API Docs</strong></a>
+ ·
+<a href="docs/ARCHITECTURE.md"><strong>Architecture</strong></a>
+ ·
+<a href="README_TR.md"><strong>Turkish README</strong></a>
+ ·
+<a href="docs/DEPLOYMENT.md"><strong>Deploy</strong></a>
+
+<br /><br />
+
+![ASR-Pro dashboard](docs/screenshots/dashboard_dark.png)
 
 </div>
 
 ---
 
-## 🌟 Why ASR-Pro?
+## Why ASR-Pro Exists
 
-ASR-Pro is not just another transcription service. It is a full-fledged customer intelligence platform designed to catch compliance breaches, predict customer churn, and monitor agent soft-skills in **real-time** or in batch mode. We engineered it to handle high-concurrency enterprise workloads with built-in thread safety and sliding-window websocket performance.
+Most speech-to-text projects stop at transcription. Enterprise teams need the next layer: **what happened, why it matters, which calls are risky, and what should be escalated now**.
 
-### ✨ Feature Highlights
+ASR-Pro is a full-stack speech intelligence platform for modern contact centers. It combines real-time ASR, zero-shot NLP, compliance monitoring, keyword intelligence, trend analytics, and production deployment assets in one clean repository.
 
-- **🎙️ Real-Time ASR (WebSockets):** Streaming audio transcription with sub-second latency and O(1) buffer optimization.
-- **🧠 Zero-Shot AI Engines:** Uses HuggingFace and local LLMs to detect sentiment, churn risk, and empathy without massive fine-tuning.
-- **🛡️ Compliance & QA:** Automatically scores agent compliance against custom, fuzzy-matched keyword rules.
-- **📊 Real-time Analytics Dashboard:** Built with React, Zustand, and Recharts, presenting real-time risk scores and trend anomalies.
-- **🔐 Enterprise Ready:** JWT-based authentication, PBKDF2/Bcrypt password hashing, strict RBAC, and SQLite/PostgreSQL support.
+| What teams need | What ASR-Pro delivers |
+|---|---|
+| Real-time speech capture | WebSocket live ASR with authenticated streaming |
+| Reliable call intelligence | Sentiment, churn, empathy, compliance, summaries, and keywords |
+| Operational dashboards | React command center with analytics, alerts, and conversations |
+| Enterprise controls | JWT auth, RBAC, rate limits, audit logging, security headers |
+| Deployment confidence | Docker Compose, Helm, health checks, Prometheus metrics |
+| Developer velocity | FastAPI, typed schemas, tests, linting, docs, seed scripts |
 
 ---
 
-## ⚡ Quick Start
+## Product Demo
 
-Start the entire platform (Backend + Frontend + Database) using Docker Compose in one command:
+### Live workflow
+
+![ASR-Pro live demo](docs/assets/demo.gif)
+
+> Prefer video? Open the recorded walkthrough: [docs/assets/demo.webm](docs/assets/demo.webm)
+
+### Core screens
+
+| Command Center | Live ASR & Analysis | Trend Intelligence |
+|---|---|---|
+| ![Dashboard](docs/screenshots/dashboard_dark.png) | ![Streamlit ASR Lab](docs/screenshots/streamlit_8501.png) | ![Analytics trend](docs/screenshots/analytics_trend.png) |
+
+---
+
+## Highlights
+
+### Real-time ASR
+
+- Authenticated WebSocket streaming at `/ws/live-asr`
+- Challenge-response auth flow so JWT tokens are not exposed in URLs
+- O(1)-style buffered audio handling to avoid repeated tiny re-transcriptions
+- `faster-whisper` support with Apple Silicon MLX acceleration where available
+
+### Enterprise NLP layer
+
+- Sentiment analysis for customer frustration and escalation detection
+- Churn-risk scoring for cancellation, complaint, and retention signals
+- Empathy and soft-skill analysis for agent quality monitoring
+- Compliance engine for required phrases, forbidden wording, and QA rules
+- Keyword engine with exact, fuzzy, semantic, regex, and topic-aware matching
+
+### Operational command center
+
+- React 19 + Vite dashboard
+- Zustand state management
+- Recharts-based analytics
+- Alert rules and active alert tracking
+- Conversation history and detail views
+- Live ASR control surface
+
+### Production-ready backend
+
+- FastAPI REST + WebSocket API
+- SQLAlchemy 2.0 models and Alembic migrations
+- SQLite for development, PostgreSQL for production
+- Redis-ready caching
+- Prometheus metrics at `/metrics`
+- Docker and Helm deployment paths
+
+---
+
+## Architecture
+
+![ASR-Pro architecture](docs/assets/architecture.png)
+
+```mermaid
+flowchart LR
+    User["Agent / Supervisor"] --> UI["React Command Center"]
+    UI -->|"REST"| API["FastAPI Gateway"]
+    UI -->|"WebSocket Audio"| WS["Live ASR WebSocket"]
+
+    API --> Auth["JWT Auth + RBAC"]
+    WS --> Auth
+
+    WS --> ASR["ASR Service<br/>faster-whisper / MLX"]
+    ASR --> NLP["NLP Engines"]
+
+    NLP --> Sentiment["Sentiment"]
+    NLP --> Churn["Churn Risk"]
+    NLP --> Empathy["Empathy"]
+    NLP --> Compliance["Compliance"]
+    NLP --> Keywords["Keyword Intelligence"]
+
+    API --> DB[("PostgreSQL / SQLite")]
+    Keywords --> DB
+    Compliance --> DB
+    Sentiment --> DB
+    Churn --> DB
+    Empathy --> DB
+
+    API --> Cache[("Redis / In-memory Cache")]
+    API --> Metrics["Prometheus Metrics"]
+```
+
+Read the full technical breakdown in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+---
+
+## Quality Gates
+
+The current repository passes the main release checks:
+
+```bash
+ruff check asr_pro tests
+ASR_TEST_NO_MODEL=1 pytest tests/ --cov=asr_pro --cov-report=term-missing -q
+npm run lint
+npm test
+npm run build
+npm audit --audit-level=moderate
+pip-audit -r requirements.txt
+```
+
+Current verified status:
+
+| Gate | Status |
+|---|---|
+| Python lint | Passing |
+| Backend tests | Passing |
+| Backend coverage | 88% |
+| Frontend lint | Passing |
+| Frontend tests | Passing |
+| Production frontend build | Passing |
+| npm audit | Passing |
+| pip-audit | Passing |
+
+Some heavy model tests can be skipped with `ASR_TEST_NO_MODEL=1` for fast CI. Run the full model suite before publishing production accuracy numbers.
+
+---
+
+## Quick Start
+
+### 1. Clone
 
 ```bash
 git clone https://github.com/ardamoustafa/ASR-Pro.git
 cd ASR-Pro
+```
 
-# Environment Variables
+### 2. Configure
+
+```bash
 cp .env.example .env
-# Edit .env and ensure JWT_SECRET_KEY is set!
+```
 
-# Start services
+Set at least:
+
+```bash
+ASR_JWT_SECRET_KEY=<generate-a-strong-secret>
+ASR_ADMIN_PASSWORD=<set-a-strong-admin-password>
+POSTGRES_PASSWORD=<set-a-strong-db-password>
+```
+
+Generate a secure JWT key:
+
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+### 3. Run with Docker Compose
+
+```bash
 docker-compose up -d
 ```
 
-The **React Dashboard** will be available at `http://localhost:5173`.  
-The **Legacy Streamlit UI** will be available at `http://localhost:8501`.
-The **API Documentation** (Swagger UI) will be available at `http://localhost:8000/api/docs`.
+Services:
 
-### Local Development (Without Docker)
+| Service | URL |
+|---|---|
+| React Dashboard | http://localhost:5173 |
+| FastAPI Swagger Docs | http://localhost:8000/api/docs |
+| API Health | http://localhost:8000/api/v1/health |
+| Prometheus Metrics | http://localhost:8000/metrics |
 
-You can use the provided Makefile to run the development environment:
+The legacy Streamlit ASR Lab is included for local experimentation but is no longer exposed as the primary public UI by default. The React dashboard is the main product surface.
+
+---
+
+## Local Development
 
 ```bash
-# 1. Install backend & frontend dependencies
 pip install -r requirements.txt
 npm install
 
-# 2. Configure environment
 cp .env.example .env
-# Edit .env and set ASR_JWT_SECRET_KEY and ASR_ADMIN_PASSWORD
-
-# 3. Initialize the database and seed default data
 python -m asr_pro.db.seed
 
-# 4. Run backend (FastAPI on :8000) and frontend (Vite on :5173)
 make dev
+```
+
+Useful commands:
+
+```bash
+make test        # backend tests with coverage
+make lint        # ruff + mypy + bandit
+make security    # bandit + pip-audit
+npm test         # frontend tests
+npm run build    # production frontend build
 ```
 
 ---
 
-## 🛠️ Architecture
+## API Snapshot
 
-ASR-Pro consists of loosely-coupled intelligent engines and a strict Separation of Concerns (SoC) methodology.
+### Login
 
-- **FastAPI Route Engine**: Handles live audio streams and REST endpoints.
-- **ASR Service**: Thread-safe Singleton utilizing `faster-whisper`.
-- **Compliance Engine**: Fuzzy-matches keywords to ensure agents mention mandatory legal statements.
-- **Sentiment & Churn Engines**: NLP models to detect user frustration or anger and calculate early-warning churn probability.
-- **Trend Engine**: Aggregates topic occurrences to predict anomalies and forecast call volumes.
+```bash
+curl -X POST "http://localhost:8000/api/v1/auth/login" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=admin&password=$ASR_ADMIN_PASSWORD"
+```
 
-For an in-depth view of the system diagrams, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+### Analyze text
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/conversations/analyze-text" \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{
+    "text": "Faturam yanlış geldi, iptal etmek istiyorum.",
+    "sector": "telecom"
+  }'
+```
+
+### Live ASR WebSocket
+
+```text
+ws://localhost:8000/ws/live-asr
+```
+
+Protocol:
+
+1. Client connects.
+2. Server sends `{"type":"auth_required"}`.
+3. Client sends `{"type":"auth","token":"..."}`.
+4. Server sends `{"type":"auth_ok"}`.
+5. Client streams audio chunks.
+6. Server returns transcript segments.
+
+See [docs/api.md](docs/api.md) for the full REST and WebSocket API.
 
 ---
 
-## 📚 API Reference
+## Security Model
 
-For integration purposes, ASR-Pro provides a comprehensive REST and WebSocket API.
-Read the full API Documentation at [docs/api.md](docs/api.md).
+ASR-Pro is designed around enterprise speech data, so the security baseline is intentionally strict:
 
----
+- JWT auth with HttpOnly cookie support
+- Secure cookie behavior in production, local-friendly behavior in development
+- Password hashing with Passlib/bcrypt
+- RBAC-ready user model
+- Rate limiting on auth and write endpoints
+- Security headers: HSTS in production, X-Frame-Options, X-Content-Type-Options, Referrer-Policy
+- Audit logging for state-changing API calls
+- WebSocket auth without tokens in query strings
+- `.env`-based secret management with no production fallback secret
 
-## 🗺️ Roadmap
-
-- [x] JWT Authentication & RBAC
-- [x] O(1) Delta Streaming for WebSockets
-- [x] React Frontend with Zustand State Management
-- [x] Dockerization & CI/CD Pipelines
-- [ ] Multi-tenant support (SaaS mode)
-- [ ] Live Agent Assist (LLM-based suggestion prompts)
-- [ ] Native mobile SDKs for iOS/Android
-
----
-
-## 🤝 Contributing
-
-We welcome contributions from the community! Please refer to our [CONTRIBUTING.md](CONTRIBUTING.md) for branch naming conventions, Conventional Commits, and local development setup.
-
-Make sure to read the [SECURITY.md](SECURITY.md) before reporting any vulnerabilities.
+For responsible disclosure, read [SECURITY.md](SECURITY.md).
 
 ---
 
-## 📈 Star History
+## Deployment
+
+### Docker Compose
+
+Docker Compose starts PostgreSQL, the FastAPI API, the React dashboard, Redis optional profile support, and the local ASR lab container.
+
+```bash
+docker-compose up -d
+docker-compose logs -f api
+```
+
+### Kubernetes / Helm
+
+The Helm chart includes backend deployment, service templates, secrets, ingress-ready values, Redis configuration, and HPA values.
+
+```bash
+helm upgrade --install asr-pro ./helm-chart \
+  --namespace asr-pro \
+  --create-namespace \
+  --set secrets.jwtKey="<your-secret>" \
+  --set secrets.adminPassword="<your-admin-password>"
+```
+
+Read [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for production setup notes.
+
+---
+
+## Use Cases
+
+### Contact Center QA
+
+Automatically surface compliance misses, weak empathy signals, risky phrasing, and repeated customer pain points.
+
+### Churn Prevention
+
+Detect cancellation language, frustration, billing disputes, and escalation signals before the account is lost.
+
+### Product Intelligence
+
+Convert thousands of calls into trend signals for product, growth, CX, and operations teams.
+
+### Compliance Monitoring
+
+Track required disclosures, forbidden claims, and sector-specific wording with auditable evidence.
+
+---
+
+## Repository Map
+
+```text
+asr_pro/
+  api/                 FastAPI app, routes, schemas, auth, WebSocket
+  core/                NLP engines: sentiment, churn, empathy, compliance, keywords
+  db/                  SQLAlchemy models, sessions, seed data
+  services/            ASR and conversation services
+src/
+  pages/               React product screens
+  components/          Reusable UI components
+  api/                 Frontend API client
+docs/
+  ARCHITECTURE.md      System design
+  DEPLOYMENT.md        Production deployment guide
+  api.md               REST and WebSocket reference
+helm-chart/            Kubernetes deployment chart
+tests/                 Backend test suite
+```
+
+---
+
+## Roadmap
+
+- [x] Authenticated FastAPI backend
+- [x] React command center
+- [x] Live WebSocket ASR
+- [x] Keyword, topic, trend, and alert engines
+- [x] Docker Compose deployment
+- [x] Helm chart foundation
+- [x] Security and dependency audits
+- [ ] Full production model benchmark report
+- [ ] Multi-tenant SaaS mode
+- [ ] Agent-assist recommendations
+- [ ] Native SDK examples
+- [ ] Hosted demo environment
+
+---
+
+## Contributing
+
+Contributions are welcome. The best first contributions are:
+
+- New sector dictionaries
+- More Turkish call-center benchmark samples
+- Additional compliance rule packs
+- Frontend accessibility improvements
+- E2E tests for live ASR and dashboard flows
+- Deployment hardening for Kubernetes environments
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+
+---
+
+## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=ardamoustafa/ASR-Pro&type=Date)](https://star-history.com/#ardamoustafa/ASR-Pro&Date)
 
 ---
 
-## 📜 License
+## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+ASR-Pro is released under the [MIT License](LICENSE).
+
