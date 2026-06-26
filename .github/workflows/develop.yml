@@ -51,7 +51,7 @@ jobs:
 
       - name: Install & build
         run: |
-          npm install
+          npm ci
           npm run build
         env:
           VITE_API_URL: http://localhost:8000/api/v1
