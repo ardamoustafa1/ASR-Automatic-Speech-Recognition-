@@ -1,7 +1,9 @@
 """FastAPI application entry point — Enterprise ASR-Pro API."""
 
+import asyncio
 import os
 import sys
+import time
 import uuid
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
@@ -15,8 +17,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-import asyncio
-import time
+
 from asr_pro.config import ROOT_DIR
 from asr_pro.db.models import AuditLog
 
@@ -76,7 +77,7 @@ async def lifespan(app: FastAPI):
             try:
                 now = time.time()
                 if TEMP_AUDIO_DIR.exists():
-                    for f in TEMP_AUDIO_DIR.iterdir():
+                    for f in TEMP_AUDIO_DIR.rglob("*"):
                         if f.is_file() and (now - f.stat().st_mtime) > 24 * 3600:
                             f.unlink()
                             logger.info(f"Purged old audio file: {f.name}")
@@ -125,6 +126,27 @@ Instrumentator(
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
+from starlette.background import BackgroundTask
+
+
+def write_audit_log(user_id, method, path, ip, status_code):
+    db = SessionLocal()
+    try:
+        audit = AuditLog(
+            user_id=user_id,
+            action=method,
+            target_resource=path,
+            ip_address=ip,
+            details={"status_code": status_code},
+        )
+        db.add(audit)
+        db.commit()
+    except Exception as e:
+        logger.error(f"Failed to create audit log: {e}")
+    finally:
+        db.close()
+
+
 @app.middleware("http")
 async def audit_log_middleware(request: Request, call_next):
     # Only audit log state-changing routes
@@ -132,33 +154,29 @@ async def audit_log_middleware(request: Request, call_next):
         "/api/v1/"
     ):
         response = await call_next(request)
-        try:
-            db = SessionLocal()
-            ip = request.client.host if request.client else "unknown"
-            # Get user from jwt token if present
-            user_id = None
-            auth = request.headers.get("Authorization", "")
-            if auth.startswith("Bearer "):
-                import jwt
-                from asr_pro.config import JWT_SECRET_KEY
+        ip = request.client.host if request.client else "unknown"
+        # Get user from jwt token if present
+        user_id = None
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            import jwt
 
-                try:
-                    payload = jwt.decode(auth.split(" ")[1], JWT_SECRET_KEY, algorithms=["HS256"])
-                    user_id = payload.get("sub")
-                except Exception:
-                    pass
-            audit = AuditLog(
-                user_id=user_id,
-                action=request.method,
-                target_resource=request.url.path,
-                ip_address=ip,
-                details={"status_code": response.status_code},
-            )
-            db.add(audit)
-            db.commit()
-            db.close()
-        except Exception as e:
-            logger.error(f"Failed to create audit log: {e}")
+            from asr_pro.config import JWT_SECRET_KEY
+
+            try:
+                payload = jwt.decode(auth.split(" ")[1], JWT_SECRET_KEY, algorithms=["HS256"])
+                user_id = payload.get("sub")
+            except Exception:
+                pass
+
+        response.background = BackgroundTask(
+            write_audit_log,
+            user_id=user_id,
+            method=request.method,
+            path=request.url.path,
+            ip=ip,
+            status_code=response.status_code,
+        )
         return response
     return await call_next(request)
 
