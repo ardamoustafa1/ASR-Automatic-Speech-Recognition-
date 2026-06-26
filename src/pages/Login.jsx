@@ -22,9 +22,8 @@ export default function LoginPage({ onLogin }) {
     setError("");
 
     try {
-      const res = await api.login(username, password);
-      localStorage.setItem("asr_token", res.access_token);
-      onLogin(res.access_token);
+      await api.login(username, password);
+      onLogin();
     } catch {
       setError("Giriş başarısız. Lütfen bilgilerinizi kontrol edin.");
     } finally {
@@ -63,11 +62,6 @@ export default function LoginPage({ onLogin }) {
             {error}
           </div>
         )}
-        
-        <div style={{ background: "rgba(66, 153, 225, 0.1)", padding: "1rem", borderRadius: "8px", fontSize: "0.85rem", color: "var(--asr-accent)", border: "1px solid rgba(66, 153, 225, 0.2)" }}>
-          <strong>İlk Kurulum (Admin Onboarding):</strong><br/>
-          Sisteme ilk kez giriş yapıyorsanız lütfen <code>.env</code> dosyasındaki <code>ASR_ADMIN_PASSWORD</code> bilgisini kullanın. (Varsayılan kullanıcı adı: <code>admin</code>)
-        </div>
 
         <form
           onSubmit={handleSubmit}
