@@ -160,7 +160,7 @@ def analyze_conversation(
         )
         for i, s in enumerate(payload.segments)
     ]
-    background_tasks.add_task(_process_analysis_background, payload.dict(), segments)
+    background_tasks.add_task(_process_analysis_background, payload.model_dump(), segments)
     return {"message": "Analiz işlemi arka plana alındı.", "status": "processing"}
 
 
@@ -179,10 +179,10 @@ def delete_conversation(conversation_id: str, db: Session = Depends(get_db)):
     conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    
+
     db.delete(conv)
     db.commit()
-    return {"message": "Conversation deleted successfully", "id": conversation_id}
+    return {"status": "success", "id": conversation_id}
 
 
 @router.get("/{conversation_id}/export")
@@ -191,11 +191,23 @@ def export_conversation(conversation_id: str, db: Session = Depends(get_db)):
     conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
-        
+
+    segments = (
+        db.query(TranscriptSegmentRow)
+        .filter(TranscriptSegmentRow.conversation_id == conversation_id)
+        .order_by(TranscriptSegmentRow.start)
+        .all()
+    )
+
     return {
-        "id": conv.id,
-        "full_transcript": conv.full_transcript,
-        "created_at": conv.created_at.isoformat() if conv.created_at else None,
-        "sector": conv.sector,
-        "duration_sec": conv.duration_sec
+        "conversation": {
+            "id": conv.id,
+            "full_transcript": conv.full_transcript,
+            "created_at": conv.created_at.isoformat() if conv.created_at else None,
+            "sector": conv.sector,
+            "duration_sec": conv.duration_sec,
+        },
+        "segments": [
+            {"start": s.start, "end": s.end, "text": s.text, "speaker": s.speaker} for s in segments
+        ],
     }
