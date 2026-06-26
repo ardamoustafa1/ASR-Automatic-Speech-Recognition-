@@ -57,19 +57,32 @@ export default function LiveASRPage() {
   const [latencyMs, setLatencyMs] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [isMockMode, setIsMockMode] = useState(false);
+  const mockIntervalRef = useRef(null);
 
   const mediaRecorderRef = useRef(null);
   const wsRef = useRef(null);
   const streamRef = useRef(null);
   const transcriptRef = useRef("");
 
+  const stopMockMode = () => {
+    if (mockIntervalRef.current) clearInterval(mockIntervalRef.current);
+    setIsMockMode(false);
+    setIsRecording(false);
+    setWsStatus(WS_STATUS.DISCONNECTED);
+  };
+
   const stopRecording = useCallback(() => {
+    if (isMockMode) {
+      stopMockMode();
+      return;
+    }
     mediaRecorderRef.current?.state === "recording" && mediaRecorderRef.current.stop();
     streamRef.current?.getTracks().forEach((t) => t.stop());
     if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.close();
     setIsRecording(false);
     setWsStatus(WS_STATUS.DISCONNECTED);
-  }, []);
+  }, [isMockMode]);
 
   // Resolve WebSocket base URL
   const wsBase = (import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1")
@@ -143,9 +156,43 @@ export default function LiveASRPage() {
       };
     } catch (err) {
       console.error("Microphone error:", err);
-      alert("Mikrofon erişimi reddedildi veya hata oluştu.");
-      setWsStatus(WS_STATUS.DISCONNECTED);
+      const useMock = window.confirm("Mikrofon erişimi reddedildi veya bulunamadı. Demo (Mock) modu başlatılsın mı?");
+      if (useMock) {
+        setIsMockMode(true);
+        startMockMode();
+      } else {
+        setWsStatus(WS_STATUS.DISCONNECTED);
+      }
     }
+  };
+
+  const startMockMode = () => {
+    setWsStatus(WS_STATUS.CONNECTED);
+    setIsRecording(true);
+    setTranscript("");
+    setAnalysis(null);
+    transcriptRef.current = "";
+    
+    const mockPhrases = [
+      "Merhaba, kolay gelsin. ",
+      "Kredi kartı ekstremdeki bir işleme itiraz etmek istiyorum. ",
+      "Gecikme faizi yansıtılmış ama ben ödemeyi yapmıştım. ",
+      "Bunu hemen iptal eder misiniz? ",
+      "Aksi takdirde kartımı kapatacağım."
+    ];
+    let currentIndex = 0;
+    
+    mockIntervalRef.current = setInterval(() => {
+      if (currentIndex < mockPhrases.length) {
+        transcriptRef.current += mockPhrases[currentIndex];
+        setTranscript(transcriptRef.current);
+        setLatencyMs(Math.floor(Math.random() * 200) + 100);
+        analyzeTranscript(transcriptRef.current);
+        currentIndex++;
+      } else {
+        stopMockMode();
+      }
+    }, 2500);
   };
 
   const startMediaRecorder = (stream, ws) => {
@@ -223,7 +270,7 @@ export default function LiveASRPage() {
                 {wsStatus === WS_STATUS.CONNECTING
                   ? "Bağlanıyor..."
                   : isRecording
-                    ? "Durdur"
+                    ? isMockMode ? "Mock Durdur" : "Durdur"
                     : "Dinle"}
               </span>
             </button>
