@@ -10,7 +10,8 @@ DATA_DIR = ROOT_DIR / "data"
 
 class Settings(BaseSettings):
     # ─── Core API Config ──────────────────────────────────────────────────────
-    api_host: str = "0.0.0.0"
+    # Bind-all is intentional in containerized deployments behind Docker/Kubernetes ingress.
+    api_host: str = "0.0.0.0"  # nosec B104
     api_port: int = 8000
 
     # ─── Security ─────────────────────────────────────────────────────────────
