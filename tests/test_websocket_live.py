@@ -1,47 +1,41 @@
-import pytest
-from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
-from asr_pro.api.main import app
-from starlette.websockets import WebSocketDisconnect
 import time
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
-client = TestClient(app)
+import pytest
+from starlette.websockets import WebSocketDisconnect
 
-def test_websocket_auth_failure():
-    # Attempt to connect without valid token
+
+def test_websocket_auth_failure(client):
     with pytest.raises(WebSocketDisconnect) as exc:
-        with client.websocket_connect("/api/v1/ws/live?token=invalid_token") as websocket:
-            pass
+        with client.websocket_connect("/ws/live-asr") as websocket:
+            msg = websocket.receive_json()
+            assert msg["type"] == "auth_required"
+            websocket.send_json({"type": "auth", "token": "invalid_token"})
+            websocket.receive_json()
     assert exc.value.code in (1000, 1008)
 
-@patch('asr_pro.api.routes.websocket._validate_token')
-@patch('asr_pro.api.routes.websocket.ASRService')
-def test_websocket_latency_and_reconnect(mock_asr_service_cls, mock_validate):
+
+@patch("asr_pro.api.routes.websocket._validate_token")
+@patch("asr_pro.api.routes.websocket.ASRService")
+def test_websocket_latency_and_reconnect(mock_asr_service_cls, mock_validate, client):
     mock_validate.return_value = {"sub": "user_123", "role": "admin"}
-    
-    # Mock the instance
+
     mock_service_instance = MagicMock()
-    mock_asr_service_cls.return_value = mock_service_instance
-    
-    mock_segment = MagicMock()
-    mock_segment.start = 0.0
-    mock_segment.end = 1.0
-    mock_segment.text = "Hello world"
-    mock_service_instance.transcribe_audio.return_value = ([mock_segment], "Hello world")
-    
-    start_time = time.time()
-    
-    with pytest.raises(WebSocketDisconnect):
-        with client.websocket_connect("/api/v1/ws/live?token=valid_token") as websocket:
-            websocket.send_bytes(b"dummy_audio_bytes")
+    mock_asr_service_cls.get_instance.return_value = mock_service_instance
+    mock_segment = SimpleNamespace(start=0.0, end=1.0, text="Hello world")
+    mock_service_instance.transcribe.return_value = ([mock_segment], 1.0)
+
+    for payload in (b"a" * 70 * 1024, b"b" * 70 * 1024):
+        start_time = time.time()
+        with client.websocket_connect("/ws/live-asr") as websocket:
+            websocket.receive_json()
+            websocket.send_json({"type": "auth", "token": "valid_token"})
+            assert websocket.receive_json()["type"] == "auth_ok"
+            websocket.send_bytes(payload)
             data = websocket.receive_json()
             latency = time.time() - start_time
-            
-            assert "text" in data or "transcript" in data
+
+            assert data["type"] == "transcript"
+            assert data["transcript"] == "Hello world"
             assert latency < 2.0
-        
-    with pytest.raises(WebSocketDisconnect):
-        with client.websocket_connect("/api/v1/ws/live?token=valid_token") as websocket2:
-            websocket2.send_bytes(b"dummy_audio_bytes_2")
-            data = websocket2.receive_json()
-            assert "text" in data or "transcript" in data
