@@ -1,8 +1,11 @@
 import datetime
 import random
+
 from sqlalchemy.orm import Session
-from asr_pro.db.models import Conversation, TranscriptSegmentRow, new_uuid
+
 from asr_pro.api.deps import get_db
+from asr_pro.db.models import Conversation, TranscriptSegmentRow, new_uuid
+
 
 def seed_fake_conversations():
     db: Session = next(get_db())
