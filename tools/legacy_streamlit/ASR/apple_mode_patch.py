@@ -13,7 +13,7 @@ original = content  # backup
 # ============================================================
 # 1. ADD apex_quality PROFILE (after ultimate_accuracy)
 # ============================================================
-apex_profile = '''    "apex_quality": ASRProfile(
+apex_profile = """    "apex_quality": ASRProfile(
         label="Apple Kalite (Apex)",
         description="Hız değil doğruluk. beam=10, best_of=10, çoklu geçiş, en kötü ses bile %95+ hedefi.",
         use_batched=False,
@@ -33,22 +33,26 @@ apex_profile = '''    "apex_quality": ASRProfile(
         retry_profile_key="rescue",
         hallucination_silence_threshold=0.8,
     ),
-'''
+"""
 
 # Insert after "ultimate_accuracy" profile block
-marker = '''        hallucination_silence_threshold=1.0,
+marker = """        hallucination_silence_threshold=1.0,
     ),
-    "enterprise": ASRProfile('''
-replacement = '''        hallucination_silence_threshold=1.0,
+    "enterprise": ASRProfile("""
+replacement = (
+    """        hallucination_silence_threshold=1.0,
     ),
-''' + apex_profile + '''    "enterprise": ASRProfile('''
+"""
+    + apex_profile
+    + """    "enterprise": ASRProfile("""
+)
 content = content.replace(marker, replacement, 1)
 print("[1/10] apex_quality profile added.")
 
 # ============================================================
 # 2. ADD AUDIO_PREP_APEX FILTER
 # ============================================================
-apex_audio = '''AUDIO_PREP_APEX = "apex"
+apex_audio = """AUDIO_PREP_APEX = "apex"
 AUDIO_PREP_FILTERS[AUDIO_PREP_APEX] = (
     "Apex Ses Kurtarma (Neural)",
     "highpass=f=60,lowpass=f=8000,"
@@ -58,10 +62,10 @@ AUDIO_PREP_FILTERS[AUDIO_PREP_APEX] = (
     "acompressor=threshold=-20dB:ratio=3:attack=3:release=60,"
     "loudnorm=I=-16:TP=-1.5:LRA=7",
 )
-'''
+"""
 
 # Insert after AUDIO_PREP_FILTERS dict
-marker2 = '''# --------------------\n'''
+marker2 = """# --------------------\n"""
 if marker2 in content:
     content = content.replace(marker2, marker2 + "\n" + apex_audio, 1)
     print("[2/10] AUDIO_PREP_APEX filter added.")
@@ -79,7 +83,7 @@ else:
 # ============================================================
 # 3. AGGRESSIVE HALLUCINATION DETECTION
 # ============================================================
-old_suspicious = '''def is_suspicious_asr_segment(segment, text: str):
+old_suspicious = """def is_suspicious_asr_segment(segment, text: str):
     words = normalize_for_wer(text)
     if len(words) < 8:
         return False
@@ -96,7 +100,7 @@ old_suspicious = '''def is_suspicious_asr_segment(segment, text: str):
         return True
     if compression_ratio > 2.9 and (avg_logprob < -0.35 or no_speech_prob > 0.45):
         return True
-    return False'''
+    return False"""
 
 new_suspicious = '''def is_suspicious_asr_segment(segment, text: str):
     """Apple-level agresif halüsinasyon tespiti."""
@@ -141,63 +145,63 @@ else:
 # ============================================================
 # Add to profiles that don't have it
 profiles_to_patch = [
-    ("smart", 'ASR_PROFILES[\"smart\"]'),
+    ("smart", 'ASR_PROFILES["smart"]'),
     ("banking", 'quality_gate=91.0,\n        retry_profile_key="rescue",\n    ),'),
-    ("latency", 'repetition_penalty=1.0,\n    ),'),
-    ("accuracy", 'repetition_penalty=1.08,\n    ),'),
-    ("rescue", 'quality_gate=ASR_CONFIDENCE_RETRY_THRESHOLD,\n    ),'),
+    ("latency", "repetition_penalty=1.0,\n    ),"),
+    ("accuracy", "repetition_penalty=1.08,\n    ),"),
+    ("rescue", "quality_gate=ASR_CONFIDENCE_RETRY_THRESHOLD,\n    ),"),
 ]
 
 # For smart profile
-old_smart_end = '''        repetition_penalty=1.05,
+old_smart_end = """        repetition_penalty=1.05,
     ),
-    "latency":'''
-new_smart_end = '''        repetition_penalty=1.05,
+    "latency":"""
+new_smart_end = """        repetition_penalty=1.05,
         hallucination_silence_threshold=1.0,
     ),
-    "latency":'''
+    "latency":"""
 content = content.replace(old_smart_end, new_smart_end, 1)
 
 # For banking profile
-old_banking_end = '''        quality_gate=91.0,
+old_banking_end = """        quality_gate=91.0,
         retry_profile_key="rescue",
     ),
-    "smart":'''
-new_banking_end = '''        quality_gate=91.0,
+    "smart":"""
+new_banking_end = """        quality_gate=91.0,
         retry_profile_key="rescue",
         hallucination_silence_threshold=1.0,
     ),
-    "smart":'''
+    "smart":"""
 content = content.replace(old_banking_end, new_banking_end, 1)
 
 # For latency profile
-old_latency_end = '''        repetition_penalty=1.0,
+old_latency_end = """        repetition_penalty=1.0,
     ),
-    "accuracy":'''
-new_latency_end = '''        repetition_penalty=1.0,
+    "accuracy":"""
+new_latency_end = """        repetition_penalty=1.0,
         hallucination_silence_threshold=1.5,
     ),
-    "accuracy":'''
+    "accuracy":"""
 content = content.replace(old_latency_end, new_latency_end, 1)
 
 # For accuracy profile
-old_accuracy_end = '''        repetition_penalty=1.08,
+old_accuracy_end = """        repetition_penalty=1.08,
     ),
-    "rescue":'''
-new_accuracy_end = '''        repetition_penalty=1.08,
+    "rescue":"""
+new_accuracy_end = """        repetition_penalty=1.08,
         hallucination_silence_threshold=1.0,
     ),
-    "rescue":'''
+    "rescue":"""
 content = content.replace(old_accuracy_end, new_accuracy_end, 1)
 
 # For rescue profile
-old_rescue_end = '''        quality_gate=ASR_CONFIDENCE_RETRY_THRESHOLD,
+old_rescue_end = """        quality_gate=ASR_CONFIDENCE_RETRY_THRESHOLD,
     ),
-}'''
-new_rescue_end = '''        quality_gate=ASR_CONFIDENCE_RETRY_THRESHOLD,
+}"""
+new_rescue_end = """        quality_gate=ASR_CONFIDENCE_RETRY_THRESHOLD,
         hallucination_silence_threshold=0.8,
     ),
-}'''
+}"""
 content = content.replace(old_rescue_end, new_rescue_end, 1)
 
 print("[4/10] hallucination_silence_threshold added to all profiles.")
@@ -206,15 +210,9 @@ print("[4/10] hallucination_silence_threshold added to all profiles.")
 # 5. UPDATE no_repeat_ngram_size AND compression_ratio_threshold
 # ============================================================
 content = content.replace(
-    '"compression_ratio_threshold": 2.4,',
-    '"compression_ratio_threshold": 2.0,',
-    1
+    '"compression_ratio_threshold": 2.4,', '"compression_ratio_threshold": 2.0,', 1
 )
-content = content.replace(
-    '"no_repeat_ngram_size": 3,',
-    '"no_repeat_ngram_size": 5,',
-    1
-)
+content = content.replace('"no_repeat_ngram_size": 3,', '"no_repeat_ngram_size": 5,', 1)
 print("[5/10] no_repeat_ngram_size=5, compression_ratio_threshold=2.0 updated.")
 
 # ============================================================
@@ -363,8 +361,8 @@ else:
 # ============================================================
 # 7. UPDATE summarize_transcription_quality WEIGHTS
 # ============================================================
-old_weights = '''    confidence = (0.72 * logprob_score + 0.20 * speech_score + 0.08 * (1.0 - repetition_risk)) * 100'''
-new_weights = '''    confidence = (0.60 * logprob_score + 0.25 * speech_score + 0.15 * (1.0 - repetition_risk)) * 100'''
+old_weights = """    confidence = (0.72 * logprob_score + 0.20 * speech_score + 0.08 * (1.0 - repetition_risk)) * 100"""
+new_weights = """    confidence = (0.60 * logprob_score + 0.25 * speech_score + 0.15 * (1.0 - repetition_risk)) * 100"""
 if old_weights in content:
     content = content.replace(old_weights, new_weights, 1)
     print("[7/10] Quality scoring weights updated (logprob 0.60, speech 0.25, repetition 0.15).")
@@ -376,7 +374,7 @@ else:
 # ============================================================
 # We need to add Apple Mode to the sidebar radio or selectbox
 # Add a checkbox for Apple Mode above the profile selector
-old_sidebar_profile = '''    profile_label_to_key = {profile.label: key for key, profile in ASR_PROFILES.items()}
+old_sidebar_profile = """    profile_label_to_key = {profile.label: key for key, profile in ASR_PROFILES.items()}
     selected_profile_label = st.selectbox(
         "ASR Profili",
         tuple(profile_label_to_key.keys()),
@@ -384,9 +382,9 @@ old_sidebar_profile = '''    profile_label_to_key = {profile.label: key for key,
         help="Kötü seslerde en güvenli başlangıç için varsayılan profili koruyabilirsin."
     )
     profile_key = profile_label_to_key[selected_profile_label]
-    st.caption(ASR_PROFILES[profile_key].description)'''
+    st.caption(ASR_PROFILES[profile_key].description)"""
 
-new_sidebar_profile = '''    apple_mode = st.toggle("🍎 Apple Mode (Konsensüs)", value=False, help="Açıkken 3 farklı stratejiyle aynı sesi çözer, segment bazında en iyisini seçer. En yüksek doğruluk ama en yavaş.")
+new_sidebar_profile = """    apple_mode = st.toggle("🍎 Apple Mode (Konsensüs)", value=False, help="Açıkken 3 farklı stratejiyle aynı sesi çözer, segment bazında en iyisini seçer. En yüksek doğruluk ama en yavaş.")
     
     profile_label_to_key = {profile.label: key for key, profile in ASR_PROFILES.items()}
     selected_profile_label = st.selectbox(
@@ -401,7 +399,7 @@ new_sidebar_profile = '''    apple_mode = st.toggle("🍎 Apple Mode (Konsensüs
         st.caption("🍎 Apple Mode aktif: 3 geçişli konsensüs dekodlama ile en yüksek doğruluk.")
     else:
         profile_key = profile_label_to_key[selected_profile_label]
-        st.caption(ASR_PROFILES[profile_key].description)'''
+        st.caption(ASR_PROFILES[profile_key].description)"""
 
 if old_sidebar_profile in content:
     content = content.replace(old_sidebar_profile, new_sidebar_profile, 1)
@@ -413,18 +411,18 @@ else:
 # 9. UPDATE transcribe_audio_file CALLS TO USE CONSENSUS WHEN APPLE MODE
 # ============================================================
 # Find the main call site in single file analysis
-old_call = '''                                profile_key=profile_key,
+old_call = """                                profile_key=profile_key,
                                 domain_key=domain_key,
                                 hotwords=combined_hotwords,
                                 progress_callback=live_callback,
-                                target_latency_s=target_latency_s,'''
+                                target_latency_s=target_latency_s,"""
 
 # We need to find the actual call and wrap it with an apple_mode check.
 # Let's look at how transcribe_audio_file is called:
 # The key integration point - we need to update the call to use consensus_transcribe when apple_mode is on.
 
 # Find: "formatted_text, detected_swears, full_transcription, segments_data, info, run_metrics = transcribe_audio_file("
-old_transcribe_call_pattern = 'formatted_text, detected_swears, full_transcription, segments_data, info, run_metrics = transcribe_audio_file('
+old_transcribe_call_pattern = "formatted_text, detected_swears, full_transcription, segments_data, info, run_metrics = transcribe_audio_file("
 # There might be multiple calls. We'll handle this via a different approach:
 # Add apple_mode to session state so we can reference it in the transcribe call
 
@@ -435,7 +433,7 @@ content = content.replace(old_apple_store, new_apple_store, 1)
 
 # Now wrap the transcribe_audio_file calls
 # We'll do a targeted replacement of the primary call
-old_primary_call = '''formatted_text, detected_swears, full_transcription, segments_data, info, run_metrics = transcribe_audio_file(
+old_primary_call = """formatted_text, detected_swears, full_transcription, segments_data, info, run_metrics = transcribe_audio_file(
                                 model,
                                 audio_path,
                                 LANGUAGE,
@@ -445,9 +443,9 @@ old_primary_call = '''formatted_text, detected_swears, full_transcription, segme
                                 hotwords=combined_hotwords,
                                 progress_callback=live_callback,
                                 target_latency_s=target_latency_s,
-                            )'''
+                            )"""
 
-new_primary_call = '''if st.session_state.get("apple_mode", False):
+new_primary_call = """if st.session_state.get("apple_mode", False):
                                 formatted_text, detected_swears, full_transcription, segments_data, info, run_metrics = consensus_transcribe(
                                     model,
                                     audio_path,
@@ -469,12 +467,14 @@ new_primary_call = '''if st.session_state.get("apple_mode", False):
                                     hotwords=combined_hotwords,
                                     progress_callback=live_callback,
                                     target_latency_s=target_latency_s,
-                                )'''
+                                )"""
 
 count = content.count(old_primary_call)
 if count >= 1:
     content = content.replace(old_primary_call, new_primary_call, 1)
-    print(f"[9/10] Primary transcribe call wrapped with Apple Mode check ({count} found, 1 replaced).")
+    print(
+        f"[9/10] Primary transcribe call wrapped with Apple Mode check ({count} found, 1 replaced)."
+    )
 else:
     print("[9/10] WARNING: Could not find primary transcribe call. Trying alternate pattern...")
     # Try a more flexible search
