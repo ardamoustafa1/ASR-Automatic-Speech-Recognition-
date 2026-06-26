@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 # Set environment variables for testing
-os.environ["ASR_JWT_SECRET_KEY"] = "test-secret"
+os.environ["ASR_JWT_SECRET_KEY"] = "test_secret_key_at_least_32_bytes_long"
 os.environ["ASR_ADMIN_PASSWORD"] = "password123"
 os.environ["ASR_AGENT_PASSWORD"] = "password123"
 TEST_DB_URL = "sqlite:///file:testdb?mode=memory&cache=shared&uri=true"
