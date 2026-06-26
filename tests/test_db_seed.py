@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
+
+from asr_pro.db.models import KeywordRule, Topic, User
 from asr_pro.db.seed import seed_defaults
-from asr_pro.db.models import User, Topic, KeywordRule
 
 
 def test_seed_defaults(db_session: Session):
