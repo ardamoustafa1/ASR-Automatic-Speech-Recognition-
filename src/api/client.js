@@ -1,18 +1,18 @@
 const BASE = import.meta.env.VITE_API_URL || "/api/v1";
 
 async function request(path, options = {}) {
-  const token = localStorage.getItem("asr_token");
   const headers = { "Content-Type": "application/json", ...options.headers };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const res = await fetch(`${BASE}${path}`, {
     headers,
+    credentials: "include",
     ...options,
   });
   if (!res.ok) {
     if (res.status === 401) {
-      localStorage.removeItem("asr_token");
-      window.location.href = "/?expired=1";
+      if (window.location.pathname !== "/") {
+        window.location.href = "/?expired=1";
+      }
       throw new Error("Unauthorized");
     }
     const err = await res.text();
@@ -31,10 +31,20 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: formData,
+      credentials: "include",
     });
     if (!res.ok) throw new Error("Login failed");
     return res.json();
   },
+  logout: async () => {
+    const res = await fetch(`${BASE}/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!res.ok) throw new Error("Logout failed");
+    return res.json();
+  },
+  me: () => request("/auth/me"),
   health: () => request("/health"),
   dashboard: () => request("/analytics/dashboard"),
   trends: (params) => request(`/analytics/trends?${new URLSearchParams(params)}`),
