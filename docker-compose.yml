@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:15-alpine
@@ -49,8 +47,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    ports:
-      - "8501:8501"
     volumes:
       - ./tools:/app/tools
       - ./asr_pro:/app/asr_pro
@@ -74,6 +70,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000/api/v1}
     ports:
       - "5173:80"
     depends_on:
