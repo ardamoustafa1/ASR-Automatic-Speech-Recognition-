@@ -1,8 +1,9 @@
 import asyncio
 import os
-import shutil
 import subprocess
+
 from playwright.async_api import async_playwright
+
 
 async def main():
     os.makedirs("docs/screenshots", exist_ok=True)
