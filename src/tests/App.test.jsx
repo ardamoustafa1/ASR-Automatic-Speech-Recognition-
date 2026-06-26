@@ -3,6 +3,7 @@ import { BrowserRouter } from "react-router-dom";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import App from "../App";
 import { useAppStore } from "../store/useAppStore";
+import { api } from "../api/client";
 
 // Mock matchMedia for recharts ResponsiveContainer
 window.matchMedia =
@@ -18,6 +19,7 @@ window.matchMedia =
 // Mock api client
 vi.mock("../api/client", () => ({
   api: {
+    me: vi.fn().mockResolvedValue({}),
     alerts: vi.fn().mockResolvedValue([]),
     dashboard: vi.fn().mockResolvedValue({}),
     trends: vi.fn().mockResolvedValue({}),
@@ -28,22 +30,27 @@ vi.mock("../api/client", () => ({
 describe("App Component", () => {
   beforeEach(() => {
     // Reset the store before each test
-    useAppStore.setState({ token: null, alertCount: 0, sidebarOpen: true });
+    useAppStore.setState({ isAuthenticated: false, alertCount: 0, sidebarOpen: true });
+    vi.clearAllMocks();
   });
 
-  it("renders login page when there is no token", () => {
+  it("renders login page when there is no token", async () => {
+    api.me.mockRejectedValueOnce(new Error("Unauthorized"));
+    
     render(
       <BrowserRouter>
         <App />
       </BrowserRouter>
     );
 
-    expect(screen.getByText("Kurumsal Giriş")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Kurumsal Giriş")).toBeInTheDocument();
+    });
   });
 
   it("renders the dashboard when token is present", async () => {
-    // Set token in Zustand store directly
-    useAppStore.setState({ token: "dummy-token" });
+    api.me.mockResolvedValueOnce({});
+    useAppStore.setState({ isAuthenticated: true });
 
     render(
       <BrowserRouter>
