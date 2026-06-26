@@ -37,7 +37,7 @@ lint: ## Lint with ruff, mypy, and bandit
 	bandit -r asr_pro/ -ll
 
 security: ## Full security audit (bandit + pip-audit)
-	bandit -r asr_pro/ ASR/
+	bandit -r asr_pro/ tools/legacy_streamlit/ASR/ -ll
 	pip-audit -r requirements.txt
 
 build: ## Build all Docker images
