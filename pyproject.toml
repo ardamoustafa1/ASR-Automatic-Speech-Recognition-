@@ -10,7 +10,7 @@ name = "asr_pro"
 version = "1.0.0"
 description = "ASR-Pro — Enterprise Speech Intelligence Platform for Contact Centers"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.9, <3.13"
 authors = [
     { name = "Arda Moustafa", email = "arda@asr-pro.io" }
 ]
