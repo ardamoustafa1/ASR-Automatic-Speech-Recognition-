@@ -1,0 +1,17 @@
+{{- if .Values.frontend.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: asr-pro-frontend
+  labels:
+    app: asr-pro-frontend
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.frontend.service.port }}
+      targetPort: 80
+      protocol: TCP
+      name: http
+  selector:
+    app: asr-pro-frontend
+{{- end -}}
