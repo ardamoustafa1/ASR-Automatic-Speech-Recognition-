@@ -1,0 +1,23 @@
+{{- if .Values.redis.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: asr-redis
+  labels:
+    app: asr-redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: asr-redis
+  template:
+    metadata:
+      labels:
+        app: asr-redis
+    spec:
+      containers:
+        - name: redis
+          image: "redis:7-alpine"
+          ports:
+            - containerPort: 6379
+{{- end -}}
