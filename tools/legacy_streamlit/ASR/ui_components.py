@@ -17,7 +17,8 @@ from asr_pro.core.empathy_engine import analyze_soft_skills
 from asr_pro.core.keyword_engine import SegmentInput
 from asr_pro.core.sentiment_engine import analyze_sentiment
 from asr_pro.core.summary_engine import generate_crm_summary, generate_ollama_summary
-from asr_pro.core.trend_engine import detect_anomalies, get_trend_data, run_keyword_analysis
+from asr_pro.core.trend_engine import detect_anomalies, get_trend_data
+from asr_pro.integration.streamlit_ui import execute_enterprise_keyword_analysis, highlight_transcript_html, render_keyword_results
 
 KEYWORD_DETECTION_ENABLED = True
 
@@ -511,6 +512,17 @@ def render_cached_analysis_result(result, reference_text, target_latency_s, enab
             wc_fig = create_wordcloud(result["full_transcription"])
             if wc_fig:
                 st.pyplot(wc_fig)
+    
+    # Render Exact Highlighted Keyword Hits if available
+    hits = result.get("keyword_result", {}).get("hits", [])
+    if hits:
+        st.markdown("#### 🔍 Tespit Edilen Anahtar Kelimeler ve Vurgular")
+        render_keyword_results(hits)
+        
+        st.markdown("##### Vurgulu Deşifre Metni")
+        highlighted_text = highlight_transcript_html(result["full_transcription"], hits)
+        st.markdown(f'<div class="transcript-container"><div class="transcript-text">{highlighted_text}</div></div>', unsafe_allow_html=True)
+
     render_search_and_transcript(result["segments_data"])
     render_download_buttons(
         result["uploaded_name"],
@@ -1491,47 +1503,36 @@ def render_app():
                                         if empathy_res.analysis_summary:
                                             st.info(empathy_res.analysis_summary)
 
-                                        emp_cols = st.columns(3)
-                                        with emp_cols[0]:
+                                        col1, col2 = st.columns(2)
+                                        with col1:
+                                            st.markdown("##### 🟢 Olumlu Sinyaller")
+                                            positives = []
                                             if empathy_res.active_listening_hits:
-                                                st.success(
-                                                    "✅ **Aktif Dinleme:**\n"
-                                                    + ", ".join(
-                                                        f"'{h}'"
-                                                        for h in empathy_res.active_listening_hits
-                                                    )
-                                                )
-                                            else:
-                                                st.error("❌ **Aktif Dinleme:** Tespit edilemedi")
-
-                                        with emp_cols[1]:
+                                                positives.append("**Aktif Dinleme:** " + ", ".join(f"'{h}'" for h in empathy_res.active_listening_hits))
                                             if empathy_res.compassion_hits:
-                                                st.success(
-                                                    "✅ **Şefkat / Özür:**\n"
-                                                    + ", ".join(
-                                                        f"'{h}'"
-                                                        for h in empathy_res.compassion_hits
-                                                    )
-                                                )
-
+                                                positives.append("**Şefkat / Özür:** " + ", ".join(f"'{h}'" for h in empathy_res.compassion_hits))
                                             if empathy_res.solution_hits:
-                                                st.success(
-                                                    "✅ **Çözüm Odaklılık:**\n"
-                                                    + ", ".join(
-                                                        f"'{h}'" for h in empathy_res.solution_hits
-                                                    )
-                                                )
-
-                                        with emp_cols[2]:
-                                            if empathy_res.defensive_hits:
-                                                st.error(
-                                                    "🛑 **Robotik/Defansif:**\n"
-                                                    + ", ".join(
-                                                        f"'{h}'" for h in empathy_res.defensive_hits
-                                                    )
-                                                )
+                                                positives.append("**Çözüm Odaklı:** " + ", ".join(f"'{h}'" for h in empathy_res.solution_hits))
+                                            
+                                            if positives:
+                                                for p in positives:
+                                                    st.success(f"✅ {p}")
                                             else:
-                                                st.success("✅ **Robotik Dil:** Yok")
+                                                st.info("ℹ️ Olumlu iletişim sinyali tespit edilemedi.")
+
+                                        with col2:
+                                            st.markdown("##### 🔴 Gelişim Alanları / Riskler")
+                                            negatives = []
+                                            if not empathy_res.active_listening_hits:
+                                                negatives.append("**Eksik Dinleme:** Müşteriye aktif olarak dinlendiği hissettirilmedi.")
+                                            if empathy_res.defensive_hits:
+                                                negatives.append("**Robotik / Savunmacı:** " + ", ".join(f"'{h}'" for h in empathy_res.defensive_hits))
+                                            
+                                            if negatives:
+                                                for n in negatives:
+                                                    st.error(f"⚠️ {n}")
+                                            else:
+                                                st.success("✅ Herhangi bir iletişim riski bulunamadı.")
 
                                 # ----------------------------------------
 
@@ -1676,7 +1677,7 @@ def render_app():
                                 keyword_result = None
                                 if KEYWORD_DETECTION_ENABLED:
                                     with st.spinner("Anahtar kelime ve konu analizi yapılıyor..."):
-                                        keyword_result = run_keyword_analysis(
+                                        keyword_result = execute_enterprise_keyword_analysis(
                                             segments_data,
                                             full_transcription,
                                             sector=domain_key,
@@ -1697,6 +1698,7 @@ def render_app():
                                         if topics_list:
                                             for t in topics_list:
                                                 st.markdown(f"- {t}")
+
 
                                             st.markdown("### ⚠️ Trend & Erken Uyarı Tespiti")
                                             current_trend_data = get_trend_data(14)
@@ -1755,7 +1757,7 @@ def render_app():
                                             crm_summary = generate_ollama_summary(
                                                 full_transcription,
                                                 ollama_model,
-                                                nlp_classifier if enable_nlp else None,
+                                                None,
                                             )
                                             badge = (
                                                 f"🔒 <b>%100 Gizli Lokal LLM ({ollama_model})</b>"
@@ -1763,7 +1765,7 @@ def render_app():
                                         else:
                                             crm_summary = generate_crm_summary(
                                                 full_transcription,
-                                                nlp_classifier if enable_nlp else None,
+                                                None,
                                             )
                                             badge = "🤖 <b>Yerel AI ile Özetlendi</b>"
 
@@ -1833,45 +1835,41 @@ def render_app():
                                 # --- TRANSKRİPSİYON GÖRÜNÜMÜ ---
                                 st.markdown("#### Deşifre Çıktısı")
 
-                                if (
-                                    keyword_result
-                                    and keyword_result.get("hits")
-                                    and KEYWORD_DETECTION_ENABLED
-                                ):
-                                    st.markdown(
-                                        highlight_transcript_html(
-                                            segments_data, keyword_result["hits"]
-                                        ),
-                                        unsafe_allow_html=True,
-                                    )
-                                else:
-                                    html_output = '<div class="transcript-container">'
-                                    for segment in segments_data:
-                                        m, s = divmod(segment.start, 60)
-                                        time_formatted = f"{int(m):02d}:{s:04.1f}"
-                                        text_content = html.escape(segment.text.strip())
+                                html_output = '<div class="transcript-container">'
+                                for segment in segments_data:
+                                    m, s = divmod(segment.start, 60)
+                                    time_formatted = f"{int(m):02d}:{s:04.1f}"
+                                    text_content = html.escape(segment.text.strip())
 
-                                        # Apply search highlight if there is an active search
-                                        if (
-                                            search_query
-                                            and search_query.lower() in segment.text.lower()
-                                        ):
-                                            pattern = re.compile(
-                                                re.escape(search_query), re.IGNORECASE
-                                            )
-                                            text_content = pattern.sub(
-                                                lambda m: f'<span class="search-highlight">{m.group(0)}</span>',
-                                                text_content,
-                                            )
+                                    # Apply search highlight if there is an active search
+                                    if (
+                                        search_query
+                                        and search_query.lower() in segment.text.lower()
+                                    ):
+                                        pattern = re.compile(
+                                            re.escape(search_query), re.IGNORECASE
+                                        )
+                                        text_content = pattern.sub(
+                                            lambda m: f'<span class="search-highlight">{m.group(0)}</span>',
+                                            text_content,
+                                        )
+                                        
+                                    # Apply keyword engine highlights
+                                    if (
+                                        keyword_result
+                                        and keyword_result.get("hits")
+                                        and KEYWORD_DETECTION_ENABLED
+                                    ):
+                                        text_content = highlight_transcript_html(text_content, keyword_result["hits"])
 
-                                        html_output += f"""
-                                        <div class="transcript-row">
-                                            <div class="transcript-time">{time_formatted}</div>
-                                            <div class="transcript-text">{text_content}</div>
-                                        </div>"""
-                                    html_output += "</div>"
+                                    html_output += f"""
+                                    <div class="transcript-row">
+                                        <div class="transcript-time">{time_formatted}</div>
+                                        <div class="transcript-text">{text_content}</div>
+                                    </div>"""
+                                html_output += "</div>"
 
-                                    st.markdown(html_output, unsafe_allow_html=True)
+                                st.markdown(html_output, unsafe_allow_html=True)
 
                                 # --- İNDİRME SEÇENEKLERİ ---
                                 col_d1, col_d2, col_d3 = st.columns(3)
@@ -2194,7 +2192,7 @@ def render_app():
                                     profile_key=profile_key,
                                     domain_key=domain_key,
                                 )
-                                run_keyword_analysis([], full_transcription)
+                                execute_enterprise_keyword_analysis([], full_transcription)
                             except Exception as e:
                                 st.error(f"{uf.name} işlenirken hata: {e}")
 
