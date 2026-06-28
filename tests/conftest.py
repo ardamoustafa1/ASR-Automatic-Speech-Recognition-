@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 # Set environment variables for testing
 os.environ["ASR_JWT_SECRET_KEY"] = "test_secret_key_at_least_32_bytes_long"
@@ -20,8 +21,15 @@ from asr_pro.db.session import get_db
 # Disable rate limiting for tests
 limiter.enabled = False
 
-engine = create_engine(TEST_DB_URL, connect_args={"check_same_thread": False})
+engine = create_engine(
+    TEST_DB_URL, connect_args={"check_same_thread": False, "timeout": 15}, poolclass=StaticPool
+)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Patch the background task SessionLocal so it doesn't open its own real DB connections
+import asr_pro.api.routes.conversations
+
+asr_pro.api.routes.conversations.SessionLocal = TestingSessionLocal
 
 from asr_pro.services.seed_data import seed_defaults
 
