@@ -29,6 +29,16 @@ def create_alert_rule(request: Request, payload: AlertRuleCreate, db: Session = 
     return rule
 
 
+@router.delete("/rules/{rule_id}", status_code=204, dependencies=[Depends(require_admin)])
+def delete_alert_rule(rule_id: str, db: Session = Depends(get_db)):
+    rule = db.query(AlertRule).filter(AlertRule.id == rule_id).first()
+    if not rule:
+        raise HTTPException(404, "Kural bulunamadı")
+    db.delete(rule)
+    db.commit()
+    return None
+
+
 @router.get("", response_model=list[AlertEventOut])
 def list_alerts(acknowledged: Optional[bool] = None, db: Session = Depends(get_db)):
     q = db.query(AlertEvent).order_by(AlertEvent.created_at.desc())
