@@ -1,0 +1,25 @@
+{{- if .Values.frontend.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: asr-pro-frontend
+  labels:
+    app: asr-pro-frontend
+spec:
+  replicas: {{ .Values.frontend.replicaCount }}
+  selector:
+    matchLabels:
+      app: asr-pro-frontend
+  template:
+    metadata:
+      labels:
+        app: asr-pro-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
+          ports:
+            - containerPort: 80
+          resources:
+{{ toYaml .Values.frontend.resources | indent 12 }}
+{{- end -}}
