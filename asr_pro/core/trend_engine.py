@@ -335,39 +335,3 @@ def dashboard_summary(db, window="7d"):
         "hits_today": hits_today,
         "top_rising_keyword": top_rising,
     }
-
-
-def run_keyword_analysis(
-    segments_data,
-    full_transcription,
-    sector=None,
-    audio_path=None,
-    uploaded_name=None,
-    asr_confidence=0.0,
-    quality_gate_passed=True,
-):
-    detected_topics = []
-    text_lower = full_transcription.lower()
-
-    if "uygulama" in text_lower and (
-        "çök" in text_lower or "açılmıyor" in text_lower or "hata" in text_lower
-    ):
-        detected_topics.append("Mobil Uygulama Çökmesi")
-    if "kargo" in text_lower and (
-        "gelmedi" in text_lower or "gecik" in text_lower or "nerede" in text_lower
-    ):
-        detected_topics.append("Kargo Gecikmesi")
-    if "ödeme" in text_lower or "kart" in text_lower or "para" in text_lower:
-        detected_topics.append("Ödeme Ekranı Hatası")
-    if "iptal" in text_lower or "kapatmak" in text_lower:
-        detected_topics.append("Üyelik İptali")
-    if "fatura" in text_lower or "ücret" in text_lower:
-        detected_topics.append("Fatura İtirazı")
-
-    for t in detected_topics:
-        try:
-            log_call_trend(topic=t)
-        except Exception:
-            pass  # nosec B110
-
-    return {"topics": detected_topics, "raw_text": full_transcription}
