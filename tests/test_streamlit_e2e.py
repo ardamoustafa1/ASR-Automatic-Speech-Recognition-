@@ -6,5 +6,6 @@ def test_streamlit_app_loads():
     # Setting an environment variable so it doesn't crash on default API URLs
     at.run()
     assert not at.exception
-    # Should contain some text depending on the title
-    assert "ASR-Pro" in at.title or "ASR" in at.title or True  # It runs without crashing
+    # App should render its main components (e.g. radio buttons)
+    assert len(at.radio) > 0
+    assert "Seçiniz" in at.radio[0].label
