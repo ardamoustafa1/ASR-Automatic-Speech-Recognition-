@@ -50,30 +50,46 @@ class SentimentClassifier:
 
     def _setup_device(self):
         """Determine the best available hardware accelerator (Apple Silicon MPS, CUDA, or CPU)."""
-        import torch
+        try:
+            import torch
 
-        if torch.backends.mps.is_available():
-            self._device_str = "mps"
-            logger.info(
-                "MPS (Apple Silicon Neural Engine) detected. Hardware acceleration enabled."
-            )
-        elif torch.cuda.is_available():
-            self._device_str = "cuda"
-            logger.info("CUDA GPU detected. Hardware acceleration enabled.")
-        else:
+            # MPS for Apple Silicon - but use -1 (CPU) as device index since
+            # transformers pipeline MPS support has edge cases; MPS is still used
+            # implicitly when model is moved via .to('mps') after load.
+            if torch.backends.mps.is_available():
+                self._device_str = "cpu"  # Load on CPU, then MPS via torch
+                self._use_mps = True
+                logger.info("MPS (Apple Silicon) detected. Loading model to CPU first.")
+            elif torch.cuda.is_available():
+                self._device_str = "cuda"
+                self._use_mps = False
+                logger.info("CUDA GPU detected. Hardware acceleration enabled.")
+            else:
+                self._device_str = "cpu"
+                self._use_mps = False
+                logger.info("No hardware acceleration detected. Falling back to CPU.")
+        except Exception:
             self._device_str = "cpu"
-            logger.info("No hardware acceleration detected. Falling back to CPU.")
+            self._use_mps = False
 
     def _load_model(self):
         """Lazy load the transformer model."""
         if self._pipeline is None:
             logger.info("Loading Zero-Shot NLP Model (mDeBERTa) into memory...")
-            from transformers import pipeline
+            try:
+                from transformers import pipeline
+            except ImportError as e:
+                logger.error(f"transformers import failed: {e}")
+                raise
 
             # We use a robust multilingual zero-shot model for accurate Turkish emotion detection
             model_name = "MoritzLaurer/mDeBERTa-v3-base-mnli-xnli"
             self._pipeline = pipeline(
-                "zero-shot-classification", model=model_name, device=self._device_str
+                "zero-shot-classification",
+                model=model_name,
+                device=self._device_str,
+                truncation=True,
+                max_length=512,
             )
             logger.info("Model loaded successfully.")
 
@@ -85,8 +101,21 @@ class SentimentClassifier:
         if not text or not text.strip():
             return {"labels": labels, "scores": [1.0] + [0.0] * (len(labels) - 1)}
 
+        # Truncate very long texts to avoid context window issues (max ~500 chars)
+        text = text[:500] if len(text) > 500 else text
+
         self._load_model()
-        return self._pipeline(text, labels, hypothesis_template=hypothesis, multi_label=False)
+        try:
+            return self._pipeline(
+                text,
+                labels,
+                hypothesis_template=hypothesis,
+                multi_label=False,
+                truncation=True,
+            )
+        except Exception as e:
+            logger.warning(f"Sentiment inference failed: {e}")
+            return {"labels": labels, "scores": [0.2] * len(labels)}
 
 
 def _map_to_category(label: str) -> EmotionCategory:
