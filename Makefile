@@ -7,9 +7,11 @@ dev: ## Run backend + frontend dev servers concurrently
 	@echo "🚀 Starting ASR-Pro development stack..."
 	@echo "   Backend API  → http://localhost:8000/api/docs"
 	@echo "   Frontend UI  → http://localhost:5173"
+	@echo "   Streamlit UI → http://localhost:8501"
 	@(trap 'kill 0' SIGINT; \
-		uvicorn asr_pro.api.main:app --reload --host 0.0.0.0 --port 8000 & \
+		uvicorn asr_pro.api.main:app --reload --host 0.0.0.0 --port 8000 --reload-dir asr_pro & \
 		npm run dev & \
+		python3 -c "import sys; sys.modules['uvloop'] = None; import runpy; sys.argv=['streamlit', 'run', 'tools/legacy_streamlit/ASR/ASR.py', '--server.address=0.0.0.0', '--server.port=8501']; runpy.run_module('streamlit', run_name='__main__')" & \
 		wait)
 
 dev-backend: ## Run only the FastAPI backend

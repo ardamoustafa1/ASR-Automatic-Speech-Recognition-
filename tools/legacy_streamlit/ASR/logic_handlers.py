@@ -154,6 +154,11 @@ def resolve_mlx_repo_name(actual_model: str) -> str:
     model_ref = str(actual_model or "large-v3-turbo")
     if model_ref.startswith("mlx-community/") or Path(model_ref).exists():
         return model_ref
+    
+    # HuggingFace uses a specific suffix for the large-v3 mlx model
+    if model_ref == "large-v3":
+        return "mlx-community/whisper-large-v3-mlx"
+        
     return f"mlx-community/whisper-{model_ref}"
 
 
@@ -192,6 +197,8 @@ class MLXWhisperWrapper:
             "condition_on_previous_text",
             "initial_prompt",
             "word_timestamps",
+            "prepend_punctuations",
+            "append_punctuations",
             "without_timestamps",
             "hallucination_silence_threshold",
             "suppress_blank",
@@ -204,6 +211,15 @@ class MLXWhisperWrapper:
         if kwargs.get("max_new_tokens") and "sample_len" not in mlx_kwargs:
             mlx_kwargs["sample_len"] = kwargs["max_new_tokens"]
         mlx_kwargs["fp16"] = True
+
+        # Deduplicate - prevent MLX from looping on repeated tokens
+        # mlx_whisper doesn't support repetition_penalty directly, but we can set
+        # no_repeat_ngram_size via a workaround using compression_ratio_threshold
+        if "repetition_penalty" in kwargs:
+            # Tighten compression threshold when repetition penalty is high
+            penalty = float(kwargs.get("repetition_penalty", 1.0))
+            current_threshold = mlx_kwargs.get("compression_ratio_threshold", 2.4)
+            mlx_kwargs["compression_ratio_threshold"] = min(current_threshold, 2.0 if penalty >= 1.1 else 2.4)
 
         res = mlx_whisper.transcribe(audio, path_or_hf_repo=self.repo_name, **mlx_kwargs)
 
@@ -234,7 +250,7 @@ class MLXWhisperWrapper:
 
 
 @st.cache_resource
-def load_whisper_model(model_size: str, engine_type: str = "Windows"):
+def load_whisper_model(model_size: str, engine_type: str = "Windows", _force_reload: int = 1):
     """Donanıma göre MLX veya Faster-Whisper modelini yükler."""
     try:
         actual_model = resolve_model_name(model_size)
@@ -1019,9 +1035,18 @@ def correct_domain_tokens(text: str, domain_profile: DomainProfile, custom_terms
 
 
 def tidy_transcript_text(text: str):
+    # Fix whisper hallucinations with repeating dots
+    text = re.sub(r'(\s*\.\s*){3,}', '... ', text)
+    text = re.sub(r'\.{4,}', '... ', text)
+    
     text = re.sub(r"\s+([?.!,;:])", r"\1", text)
-    text = re.sub(r"([?.!])(?=\S)", r"\1 ", text)
+    # Don't add spaces between dots (preserve ellipses)
+    text = re.sub(r"([?.!])(?=[^\s.])", r"\1 ", text)
     text = re.sub(r"\s+", " ", text).strip()
+    
+    # Strip any trailing repeated punctuation if it's overly long
+    text = re.sub(r'(?:\.\s*){3,}$', '.', text)
+    
     if text:
         text = text[0].upper() + text[1:]
     return text
@@ -1057,13 +1082,27 @@ def domain_correction_count(raw_text: str, corrected_text: str):
 
 
 def build_initial_prompt(hotwords: str = ""):
+    # Gerçekçi çağrı merkezi diyaloğu — MLX greedy decoder'ı doğru kelimelere yönlendirir.
+    # "bendeyim" yerine "iyiyim", "ne" yerine "ne?" gibi fonetik benzer hataları önlemek için
+    # modelin görmesini istediğimiz kelime formlarını bu prompt içinde bırakıyoruz.
+    base_prompt = (
+        "Türkçe müşteri hizmetleri görüşmesi. Müşteri ve temsilci konuşuyor. "
+        "Merhaba, iyi günler. İyi günler, nasılsınız? İyiyim teşekkür ederim, siz nasılsınız? "
+        "Ben de iyiyim, teşekkür ederim. Size nasıl yardımcı olabilirim? "
+        "Faturamla ilgili bir sorunum var. Elbette, hesap numaranızı alabilir miyim? "
+        "Tarifenizi değiştirmek ister misiniz? Evet, lütfen. Hayır, teşekkürler. "
+        "Anlıyorum, bir dakika bekler misiniz? Tabii ki, bekliyorum. "
+        "Teknik bir sorun yaşıyorum. İnternet bağlantım yok. Faturamı ödedim. "
+        "İptal etmek istiyorum. Paket değişikliği yapmak istiyorum. "
+        "Aradığınız için teşekkür ederiz, iyi günler. Güle güle."
+    )
     terms = parse_custom_terms(hotwords)
     if not terms:
-        return None
+        return base_prompt
     term_text = ", ".join(terms[:ASR_INITIAL_PROMPT_TERM_LIMIT])
     if len(term_text) > ASR_INITIAL_PROMPT_CHAR_LIMIT:
         term_text = term_text[:ASR_INITIAL_PROMPT_CHAR_LIMIT].rsplit(",", 1)[0]
-    return "Türkçe çağrı merkezi kaydı. Terimleri doğru yaz: " f"{term_text}."
+    return f"{base_prompt} Sektöre özel terimler: {term_text}."
 
 
 def build_transcribe_options(profile: ASRProfile, lang: str, task: str, hotwords: str = ""):
@@ -1170,6 +1209,11 @@ def repeated_ngram_ratio(words, n=3):
 def is_suspicious_asr_segment(segment, text: str):
     """Apple-level agresif halüsinasyon tespiti."""
     words = normalize_for_wer(text)
+    
+    # Sadece noktalama işaretinden oluşan veya anlamsız kısa segmentleri yakala
+    if len(text.strip()) > 10 and len(words) < 2:
+        return True
+        
     if len(words) < 5:
         return False
 
@@ -1388,9 +1432,13 @@ def summarize_transcription_quality(segments_data):
     avg_no_speech_prob = weighted_no_speech / total_duration
     repetition_risk = clamp((compression_risk / total_duration) / 1.5)
 
-    logprob_score = clamp((avg_logprob + 1.25) / 1.05)
+    # MLX-Whisper Turbo modelleri Türkçe için genellikle daha düşük (örn: -0.6 ila -0.9) avg_logprob verir.
+    # Normalizasyon aralığını genişleterek (-1.8 ile -0.4 arası) cezayı azalttık.
+    logprob_score = clamp((avg_logprob + 1.8) / 1.4)
     speech_score = clamp(1.0 - avg_no_speech_prob)
-    confidence = (0.60 * logprob_score + 0.25 * speech_score + 0.15 * (1.0 - repetition_risk)) * 100
+    
+    # MLX için logprob'un ağırlığı düşürüldü, net konuşma oranına (speech_score) daha çok önem verildi
+    confidence = (0.45 * logprob_score + 0.40 * speech_score + 0.15 * (1.0 - repetition_risk)) * 100
 
     return {
         "confidence": confidence,
@@ -1437,6 +1485,12 @@ def transcribe_with_profile(
         start_time = float(segment.start)
         end_time = float(segment.end)
         raw_text = segment.text.strip()
+        
+        # Clean up whisper hallucinations before they corrupt raw logs or scores
+        raw_text = re.sub(r'(\s*\.\s*){3,}', '... ', raw_text)
+        raw_text = re.sub(r'\.{4,}', '... ', raw_text)
+        raw_text = re.sub(r'(?:\.\s*){3,}$', '.', raw_text)
+        
         if not raw_text:
             continue
         if is_suspicious_asr_segment(segment, raw_text):
