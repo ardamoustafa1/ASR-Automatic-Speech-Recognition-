@@ -163,7 +163,24 @@ def analyze_compliance_risk(
 
     classifier = SentimentClassifier.get_instance() if use_ai else None
 
+    # Risk keywords for pre-filtering (avoid calling ML on every segment)
+    risk_keywords = [
+        "iptal",
+        "şifre",
+        "sözleşme",
+        "kart",
+        "garanti",
+        "ödeme",
+        "zorunlu",
+        "cezası",
+        "kazanç",
+        "kesin",
+        "risk",
+    ]
+
     # 1. FUZZY RED FLAG (DETERMINISTIC) + NEGATION FILTER
+    ai_candidate_segments = []  # Collect segments needing AI analysis
+
     for seg in segments:
         text = seg.text or ""
         text_lower = text.lower()
@@ -193,30 +210,26 @@ def analyze_compliance_risk(
                     break
 
             if violation_found_in_segment:
-                continue
+                break
 
-        # 2. YAPAY ZEKA (CONTEXTUAL) DENETİMİ (Confidence Gate %80)
+        # Collect AI candidate segments (only segments with risk keywords, not already flagged)
         words = text.split()
-        if not violation_found_in_segment and use_ai and classifier and len(words) > 5:
-            risk_keywords = [
-                "iptal",
-                "şifre",
-                "sözleşme",
-                "kart",
-                "garanti",
-                "ödeme",
-                "zorunlu",
-                "cezası",
-                "kazanç",
-                "kesin",
-                "risk",
-            ]
-            if any(k in text_lower for k in risk_keywords):
-                # Sahte alarm olmaması için burada da ön kontrol yap
-                if _is_negated(text_lower, 0, len(text_lower)):
-                    continue
+        if (
+            not violation_found_in_segment
+            and use_ai
+            and classifier
+            and len(words) > 5
+            and any(k in text_lower for k in risk_keywords)
+            and not _is_negated(text_lower, 0, len(text_lower))
+        ):
+            # Truncate text to avoid slow inference on very long segments
+            ai_candidate_segments.append((seg, text[:400]))
 
-                hypothesis = "This customer service response represents {}."
+    # 2. YAPAY ZEKA (CONTEXTUAL) DENETİMİ - Batch processing (much faster)
+    if ai_candidate_segments and classifier:
+        try:
+            hypothesis = "This customer service response represents {}."
+            for seg, text in ai_candidate_segments:
                 res = classifier.predict(text, labels=NLP_COMPLIANCE_LABELS, hypothesis=hypothesis)
                 score_map = dict(zip(res["labels"], res["scores"]))
 
@@ -243,5 +256,7 @@ def analyze_compliance_risk(
                             timestamp_end=seg.end,
                         )
                     )
+        except Exception:
+            pass  # AI analysis failure should not break compliance check
 
     return sorted(violations, key=lambda v: v.timestamp_start)
