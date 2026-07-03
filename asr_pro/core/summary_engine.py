@@ -77,21 +77,26 @@ def generate_crm_summary(full_text: str, classifier: Any = None) -> CallSummary:
             "Bilinmiyor", "Bilinmiyor", "Bilinmiyor", "Bilinmiyor", executive_summary
         )
 
-    # SADECE EN ANLAMLI KISMI (Örn son 500 kelime) ANALİZ ETKİ HIZLI ÇALIŞSIN
+    # Daha geniş analiz penceresi — tüm metin olabildiğince kullanılsın.
+    # Zero-Shot modeller için 400 kelime hem hızlı hem yeterince bağlamlı.
     words = full_text.split()
-    if len(words) > 200:
-        # Özet için başı ve sonu daha değerlidir. İlk 100 ve son 100 kelimeyi birleştir
-        analysis_text = " ".join(words[:100] + words[-100:])
+    if len(words) > 400:
+        # Başı (120 kelime) + orta (80 kelime) + sonu (200 kelime) birleştir
+        mid_start = len(words) // 2 - 40
+        analysis_text = " ".join(words[:120] + words[mid_start : mid_start + 80] + words[-200:])
     else:
         analysis_text = full_text
 
     # 1. Müşteri (Intent)
     intent_labels = [
         "Fatura İtirazı",
-        "Teknik Destek",
-        "Üyelik İptali",
-        "Bilgi Alma",
-        "Şikayet ve Öneri",
+        "Teknik Destek Talebi",
+        "Abonelik İptali",
+        "Tarife veya Paket Değişikliği",
+        "Genel Bilgi Alma",
+        "Kampanya veya Teklif Sorgusu",
+        "Şikayet",
+        "Sözleşme Yenileme",
     ]
     intent_res = zero_shot_classifier.predict(
         analysis_text, labels=intent_labels, hypothesis="Müşterinin ana talebi {} ile ilgilidir."
@@ -100,12 +105,14 @@ def generate_crm_summary(full_text: str, classifier: Any = None) -> CallSummary:
 
     # 2. Sorun (Issue)
     issue_labels = [
-        "Yanlış Ücretlendirme",
-        "Sistem Hatası",
-        "Kargo Gecikmesi",
-        "Kullanıcı Hatası",
-        "Kusurlu Ürün",
-        "İletişim Eksikliği",
+        "Fiyat veya Tarife Anlaşmazlığı",
+        "Bağlantı veya Sinyal Sorunu",
+        "Paket veya Kota Yetersizliği",
+        "Fatura Yüksekliği",
+        "Sözleşme veya Taahhüt Sorunu",
+        "Müşteri Bilgi Talebi",
+        "Hizmet Kalitesi Şikayeti",
+        "Teknik Arıza",
     ]
     issue_res = zero_shot_classifier.predict(
         analysis_text, labels=issue_labels, hypothesis="Bu çağrıdaki kök neden {} kaynaklıdır."
@@ -114,12 +121,15 @@ def generate_crm_summary(full_text: str, classifier: Any = None) -> CallSummary:
 
     # 3. İşlem (Action)
     action_labels = [
-        "Kredi Tanımlandı",
-        "İade Başlatıldı",
-        "Talep Oluşturuldu",
-        "Bilgi Verildi",
-        "Şifre Sıfırlandı",
-        "İşlem Yapılmadı",
+        "Tarife veya Paket Değişikliği Yapıldı",
+        "Kampanya veya İndirim Tanımlandı",
+        "Müşteri Yönlendirildi",
+        "Fatura Düzeltmesi Yapıldı",
+        "Teknik Destek Verildi",
+        "Genel Bilgi Verildi",
+        "Randevu veya Geri Arama Planlandı",
+        "Talep Üst Birime İletildi",
+        "Herhangi Bir İşlem Yapılmadı",
     ]
     action_res = zero_shot_classifier.predict(
         analysis_text,

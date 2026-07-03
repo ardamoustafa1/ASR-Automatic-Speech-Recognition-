@@ -87,4 +87,6 @@ node_modules
 dist
 *.log
 __pycache__
-\n.coverage\n.commit_history*\ngenerate_commits.py\n
+.coverage*
+.commit_history*
+generate_commits.py

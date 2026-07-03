@@ -157,7 +157,7 @@ def resolve_mlx_repo_name(actual_model: str) -> str:
     
     # HuggingFace uses a specific suffix for the large-v3 mlx model
     if model_ref == "large-v3":
-        return "mlx-community/whisper-large-v3-mlx"
+        return "mlx-community/whisper-large-v3-mlx-4bit"
         
     return f"mlx-community/whisper-{model_ref}"
 
@@ -177,14 +177,8 @@ class MLXWhisperWrapper:
         import mlx_whisper
         from mlx_whisper.transcribe import ModelHolder
 
-        # Thread-safety for Streamlit: Bind MLX to the GPU stream in the current thread
-        try:
-            mx.set_default_stream(mx.default_stream(mx.gpu))
-            # Critical Fix: Clear cached model to prevent cross-stream Metal GPU deadlock
-            ModelHolder.model = None
-            ModelHolder.model_path = None
-        except Exception:
-            pass
+        # Streamlit calls this from different threads. MLX handles cross-thread
+        # model caching fine as long as parameters are evaluated (which load_model does).
 
         mlx_kwargs = {}
         for key in [
@@ -207,6 +201,12 @@ class MLXWhisperWrapper:
         ]:
             if key in kwargs and kwargs[key] is not None:
                 mlx_kwargs[key] = kwargs[key]
+
+        # CRITICAL: Always lock the language to prevent mid-audio language switching.
+        # MLX Whisper re-detects language if `language` key is missing from decode_options.
+        # When the model hears English brand names (YouTube, Netflix, WhatsApp), it may
+        # switch the decoder language. Force it to stay in the specified language.
+        mlx_kwargs["language"] = mlx_kwargs.get("language") or kwargs.get("language") or "tr"
 
         if kwargs.get("max_new_tokens") and "sample_len" not in mlx_kwargs:
             mlx_kwargs["sample_len"] = kwargs["max_new_tokens"]

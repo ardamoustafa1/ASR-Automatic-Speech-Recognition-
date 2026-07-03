@@ -53,8 +53,8 @@ def test_generate_crm_summary_with_classifier():
     classifier = MockClassifier()
     res = generate_crm_summary(text, classifier=classifier)
     assert res.intent == "Fatura İtirazı"  # the first label in the code's list
-    assert res.issue == "Yanlış Ücretlendirme"
-    assert res.action == "Kredi Tanımlandı"
+    assert res.issue == "Fiyat veya Tarife Anlaşmazlığı"
+    assert res.action == "Tarife veya Paket Değişikliği Yapıldı"
     assert res.resolution == "Çözüldü"
 
 

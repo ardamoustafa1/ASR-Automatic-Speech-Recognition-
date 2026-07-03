@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 from collections.abc import Sequence
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -27,7 +27,7 @@ from asr_pro.db.models import (
 )
 
 
-def rules_from_db(db: Session, sector: Optional[str] = None) -> list[RuleInput]:
+def rules_from_db(db: Session, sector: str | None = None) -> list[RuleInput]:
     q = db.query(KeywordRule).filter(KeywordRule.is_active.is_(True))
     rules = q.all()
     result = []
@@ -88,12 +88,12 @@ def save_conversation_with_analysis(
     segments_data: Sequence[Any],
     full_transcript: str,
     sector: str = "omni",
-    audio_path: Optional[str] = None,
-    uploaded_name: Optional[str] = None,
+    audio_path: str | None = None,
+    uploaded_name: str | None = None,
     asr_confidence: float = 0.0,
     quality_gate_passed: bool = True,
-    speakers: Optional[list[str]] = None,
-    metadata: Optional[dict] = None,
+    speakers: list[str] | None = None,
+    metadata: dict | None = None,
 ) -> dict:
     from asr_pro.core.churn_engine import analyze_churn_risk
 

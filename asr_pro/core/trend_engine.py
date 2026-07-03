@@ -64,7 +64,7 @@ def get_trend_data(days: int = 14) -> dict[str, dict[str, int]]:
         # Öncelikle tüm tarihleri ve tüm topicleri 0 ile başlat (eksik günleri doldur)
         for i in range(days):
             d_str = (datetime.now().date() - timedelta(days=days - 1 - i)).isoformat()
-            data_by_date[d_str] = {t: 0 for t in all_topics}
+            data_by_date[d_str] = dict.fromkeys(all_topics, 0)
 
         for log in logs:
             d_str = (

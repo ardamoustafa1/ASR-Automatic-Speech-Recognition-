@@ -1129,7 +1129,7 @@ def render_app():
         )
 
         translate_mode = st.checkbox(
-            "Çeviri Modu", value=True, help="Türkçe konuşmayı İngilizce'ye çevirerek yazar."
+            "Çeviri Modu", value=False, help="Türkçe konuşmayı İngilizce'ye çevirerek yazar."
         )
         enable_nlp = st.checkbox(
             "Toksisite Analizi",
