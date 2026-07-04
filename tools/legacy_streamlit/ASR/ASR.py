@@ -52,13 +52,9 @@ if "ffmpeg_ready" not in st.session_state:
     import imageio_ffmpeg
 
     ffmpeg_src = imageio_ffmpeg.get_ffmpeg_exe()
-    ffmpeg_dst = os.path.join(os.getcwd(), "ffmpeg.exe")
-    if not os.path.exists(ffmpeg_dst):
-        try:
-            shutil.copy2(ffmpeg_src, ffmpeg_dst)
-        except Exception:
-            pass
-    os.environ["PATH"] += os.pathsep + os.getcwd()
+    ffmpeg_dir = os.path.dirname(ffmpeg_src)
+    if ffmpeg_dir not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
     st.session_state["ffmpeg_path"] = ffmpeg_src
     st.session_state["ffmpeg_ready"] = True
 
