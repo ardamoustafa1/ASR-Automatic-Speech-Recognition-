@@ -1,3 +1,4 @@
+<!-- ASR-Pro: Kurumsal Otomatik Ses Tanıma ve Çağrı Merkezi Analitiği -->
 # ASR PRO
 
 **Türkçe odaklı, çok modlu bir ses zekasi platformu:** yüksek performansli deşifre, hibrit toksisite analizi, konuşmaci ayrimi, raporlama ve arama.
