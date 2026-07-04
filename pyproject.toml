@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-exclude = ["tests*", "dev-scripts*", "tools.legacy_streamlit*"]
+exclude = ["tests*", "tools.legacy_streamlit*"]
 
 [project]
 name = "asr_pro"
@@ -68,7 +68,7 @@ target-version = "py39"
 line-length = 100
 exclude = [
     ".venv", "venv", "__pycache__", "dist", "build",
-    "node_modules", ".git", "alembic/versions", "tools/legacy_streamlit", "tools/legacy", "dev-scripts"
+    "node_modules", ".git", "alembic/versions", "tools/legacy_streamlit"
 ]
 
 [tool.ruff.lint]

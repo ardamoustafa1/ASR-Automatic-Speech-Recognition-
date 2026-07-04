@@ -78,15 +78,8 @@ logs/
 .benchmarks/
 
 # ─── Binary executables ───────────────────────────────────────────────────────
-ffmpeg.exe
 *.exe
+*.dll
+*.so
+*.dylib
 
-ffmpeg.exe
-node_modules
-.env
-dist
-*.log
-__pycache__
-.coverage*
-.commit_history*
-generate_commits.py
