@@ -124,10 +124,152 @@ class DiarizationService:
             self._pipeline = None
             return None
 
+    @staticmethod
+    def is_stereo_audio(audio_path: str | None) -> bool:
+        """Check if an audio file has 2 or more channels (stereo)."""
+        if not audio_path or not os.path.exists(audio_path):
+            return False
+        try:
+            import av
+
+            with av.open(audio_path, mode="r", metadata_errors="ignore") as container:
+                if container.streams.audio:
+                    return getattr(container.streams.audio[0].codec_context, "channels", 1) >= 2
+        except Exception:
+            pass
+        try:
+            import wave
+
+            with wave.open(audio_path, "rb") as wf:
+                return wf.getnchannels() >= 2
+        except Exception:
+            pass
+        return False
+
+    def _decode_stereo_channels(self, audio_path: str) -> tuple[Any, Any, int]:
+        """Decode stereo audio into separate left and right channel arrays at 16kHz."""
+        import numpy as np
+
+        try:
+            from faster_whisper import decode_audio
+
+            left_ch, right_ch = decode_audio(audio_path, sampling_rate=16000, split_stereo=True)
+            return left_ch, right_ch, 16000
+        except Exception as exc:
+            logger.warning(f"faster_whisper stereo decoding failed ({exc}), using PyAV fallback...")
+            try:
+                import av
+
+                with av.open(audio_path) as container:
+                    stream = container.streams.audio[0]
+                    resampler = av.audio.resampler.AudioResampler(
+                        format="s16", layout="stereo", rate=16000
+                    )
+                    left_list, right_list = [], []
+                    for frame in container.decode(stream):
+                        for r_frame in resampler.resample(frame):
+                            arr = r_frame.to_ndarray().astype(np.float32) / 32768.0
+                            if arr.ndim == 2 and arr.shape[0] >= 2:
+                                left_list.append(arr[0])
+                                right_list.append(arr[1])
+                            elif arr.ndim == 1 and len(arr) >= 2:
+                                left_list.append(arr[0::2])
+                                right_list.append(arr[1::2])
+                    left_ch = np.concatenate(left_list) if left_list else np.array([])
+                    right_ch = np.concatenate(right_list) if right_list else np.array([])
+                return left_ch, right_ch, 16000
+            except Exception as e2:
+                logger.error(f"PyAV stereo fallback failed: {e2}")
+                return np.array([]), np.array([]), 16000
+
+    def _align_stereo_segments(
+        self, segments: list[SegmentInput], audio_path: str
+    ) -> list[SegmentInput]:
+        """Align segments to speakers using stereo left/right channel acoustic energy."""
+        import numpy as np
+
+        left_ch, right_ch, sr = self._decode_stereo_channels(audio_path)
+        if len(left_ch) == 0 or len(right_ch) == 0:
+            return segments
+
+        aligned: list[SegmentInput] = []
+        curr_spk = "SPEAKER_00"
+        for seg in segments:
+            if seg.speaker in ("SPEAKER_00", "SPEAKER_01"):
+                curr_spk = seg.speaker
+            else:
+                idx_start = max(0, int(seg.start * sr))
+                idx_end = min(len(left_ch), int(seg.end * sr))
+                if idx_end > idx_start:
+                    l_slice = left_ch[idx_start:idx_end]
+                    r_slice = right_ch[idx_start:idx_end]
+                    l_energy = float(np.mean(l_slice**2))
+                    r_energy = float(np.mean(r_slice**2))
+
+                    if l_energy > r_energy * 1.05 and l_energy > 1e-6:
+                        curr_spk = "SPEAKER_00"
+                    elif r_energy > l_energy * 1.05 and r_energy > 1e-6:
+                        curr_spk = "SPEAKER_01"
+
+            aligned.append(
+                SegmentInput(
+                    start=seg.start,
+                    end=seg.end,
+                    text=seg.text,
+                    speaker=curr_spk,
+                    segment_index=seg.segment_index,
+                )
+            )
+        return aligned
+
     def diarize(self, audio_path: str) -> list[SpeakerTurn]:
         """Perform speaker diarization on an audio file and return speaker turns."""
         if not audio_path or not os.path.exists(audio_path):
             return []
+
+        if self.is_stereo_audio(audio_path):
+            logger.info(
+                f"Diarization: Stereo audio detected for {audio_path}. Using dual-channel energy separation."
+            )
+            left_ch, right_ch, sr = self._decode_stereo_channels(audio_path)
+            if len(left_ch) > 0 and len(right_ch) > 0:
+                import numpy as np
+
+                turns: list[SpeakerTurn] = []
+                window_size = int(0.5 * sr)  # 500ms windows
+                total_len = min(len(left_ch), len(right_ch))
+                curr_speaker = "SPEAKER_00"
+                turn_start = 0.0
+
+                for i in range(0, total_len, window_size):
+                    l_slice = left_ch[i : min(i + window_size, total_len)]
+                    r_slice = right_ch[i : min(i + window_size, total_len)]
+                    l_energy = float(np.mean(l_slice**2)) if len(l_slice) > 0 else 0.0
+                    r_energy = float(np.mean(r_slice**2)) if len(r_slice) > 0 else 0.0
+
+                    if l_energy > r_energy * 1.05 and l_energy > 1e-5:
+                        win_speaker = "SPEAKER_00"
+                    elif r_energy > l_energy * 1.05 and r_energy > 1e-5:
+                        win_speaker = "SPEAKER_01"
+                    else:
+                        win_speaker = curr_speaker
+
+                    if win_speaker != curr_speaker:
+                        turn_end = i / sr
+                        if turn_end > turn_start:
+                            turns.append(
+                                SpeakerTurn(start=turn_start, end=turn_end, speaker=curr_speaker)
+                            )
+                        turn_start = turn_end
+                        curr_speaker = win_speaker
+
+                final_end = total_len / sr
+                if final_end > turn_start:
+                    turns.append(SpeakerTurn(start=turn_start, end=final_end, speaker=curr_speaker))
+                logger.info(
+                    f"Stereo diarization complete: found {len(turns)} turns across left/right channels."
+                )
+                return turns
 
         pipeline = self.load_pipeline()
         if pipeline is None:
@@ -136,7 +278,7 @@ class DiarizationService:
         logger.info(f"Running acoustic speaker diarization on: {audio_path}")
         try:
             diarization = pipeline(audio_path)
-            turns: list[SpeakerTurn] = []
+            turns = []
             for turn, _, speaker in diarization.itertracks(yield_label=True):
                 turns.append(
                     SpeakerTurn(start=float(turn.start), end=float(turn.end), speaker=str(speaker))
@@ -177,6 +319,20 @@ class DiarizationService:
 
         if not segments:
             return [], None, None
+
+        segments = self._split_into_sentences(segments)
+
+        if audio_path and self.is_stereo_audio(audio_path):
+            logger.info(
+                f"Diarization: Stereo audio detected for {audio_path}. Aligning segments via dual-channel energy."
+            )
+            aligned_segments = self._align_stereo_segments(segments, audio_path)
+            aligned_segments = self._deduplicate_assigned_segments(aligned_segments)
+            speakers_present = {s.speaker for s in aligned_segments if s.speaker}
+            if not speakers_present:
+                speakers_present = {"SPEAKER_00", "SPEAKER_01"}
+            agent_id, customer_id = self._identify_roles(aligned_segments, sorted(speakers_present))
+            return aligned_segments, agent_id, customer_id
 
         turns = self.diarize(audio_path) if audio_path else []
 
@@ -245,8 +401,84 @@ class DiarizationService:
                         )
                     )
 
+        aligned_segments = self._deduplicate_assigned_segments(aligned_segments)
         agent_id, customer_id = self._identify_roles(aligned_segments, sorted(speakers_present))
         return aligned_segments, agent_id, customer_id
+
+    @staticmethod
+    def _split_into_sentences(segments: list[SegmentInput]) -> list[SegmentInput]:
+        """Split multi-sentence segments so speaker assignment evaluates short utterances cleanly."""
+        if not segments:
+            return []
+        import re
+        refined = []
+        for seg in segments:
+            text = (seg.text or "").strip()
+            if not text:
+                continue
+            sentences = [s.strip() for s in re.split(r'(?<=[.?!;])\s+', text) if s.strip()]
+            if len(sentences) <= 1 or (seg.end - seg.start) <= 2.5:
+                refined.append(seg)
+                continue
+            total_chars = sum(max(len(s), 1) for s in sentences)
+            duration = max(seg.end - seg.start, 0.1)
+            cur_start = seg.start
+            for s_idx, sent in enumerate(sentences):
+                sent_len = max(len(sent), 1)
+                if s_idx == len(sentences) - 1:
+                    sent_end = seg.end
+                else:
+                    sent_dur = duration * (sent_len / total_chars)
+                    sent_end = round(cur_start + sent_dur, 2)
+                refined.append(
+                    SegmentInput(
+                        start=round(cur_start, 2),
+                        end=sent_end,
+                        text=sent,
+                        speaker=seg.speaker,
+                        segment_index=len(refined),
+                    )
+                )
+                cur_start = sent_end
+        return refined
+
+    @staticmethod
+    def _deduplicate_assigned_segments(segments: list[SegmentInput]) -> list[SegmentInput]:
+        """Remove consecutive hallucinated repetition loops per speaker across timestamps."""
+        if not segments:
+            return []
+        import re
+        cleaned = []
+        recent_by_spk: dict[str, list[tuple[float, float, str]]] = {}
+        for seg in segments:
+            spk = getattr(seg, "speaker", "default") or "default"
+            text = getattr(seg, "text", "").strip()
+            if not text:
+                continue
+            norm = re.sub(r'[^\w\s]', '', text.lower()).strip()
+            if not norm:
+                continue
+            words = norm.split()
+            start = float(getattr(seg, "start", 0))
+            end = float(getattr(seg, "end", 0))
+            
+            is_dup = False
+            if spk in recent_by_spk:
+                for prev_start, prev_end, prev_norm in recent_by_spk[spk][-4:]:
+                    gap = start - prev_end
+                    if norm == prev_norm and gap < 25.0:
+                        is_dup = True
+                        break
+                    if len(words) <= 4 and (norm in prev_norm or prev_norm in norm) and gap < 15.0:
+                        is_dup = True
+                        break
+            if is_dup:
+                continue
+            if spk not in recent_by_spk:
+                recent_by_spk[spk] = []
+            recent_by_spk[spk].append((start, end, norm))
+            cleaned.append(seg)
+        return cleaned
 
     def _identify_roles(
         self, segments: list[SegmentInput], speakers: list[str]
