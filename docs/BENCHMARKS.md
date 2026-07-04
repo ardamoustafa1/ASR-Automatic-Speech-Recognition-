@@ -1,8 +1,8 @@
 # ASR-Pro Performance Benchmarks
 
-ASR-Pro is designed to deliver "God-Tier" performance across multiple environments, with native support for NVIDIA CUDA, Apple Silicon (MLX), and CPU fallback.
+ASR-Pro is architected to deliver ultra-low-latency speech recognition across heterogenous computing environments, featuring native acceleration for NVIDIA CUDA, Apple Silicon (MLX), and CPU fallback.
 
-## 1. Apple Silicon (MLX) "God-Tier" Mode
+## 1. Apple Silicon Native MLX Acceleration
 On macOS devices with M1/M2/M3/M4 chips, ASR-Pro automatically utilizes Apple's MLX framework for native GPU acceleration.
 
 *   **Model**: `mlx-community/whisper-turbo`
