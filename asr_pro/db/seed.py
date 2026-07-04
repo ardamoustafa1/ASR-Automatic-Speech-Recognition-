@@ -1,3 +1,4 @@
+# Seeding script to populate the database with realistic sample call center data.
 """Compatibility alias for the seed module.
 
 The canonical implementation is in ``asr_pro.services.seed_data``.
