@@ -1,3 +1,4 @@
+# Pydantic schemas for dashboard KPI metrics and performance trend data.
 from typing import Optional
 
 from pydantic import BaseModel
