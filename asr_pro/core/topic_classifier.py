@@ -1,3 +1,4 @@
+# Classifies conversation topics using Latent Dirichlet Allocation and NLP models.
 from __future__ import annotations
 
 """Lightweight topic classification from keyword hits and seed synonyms."""
