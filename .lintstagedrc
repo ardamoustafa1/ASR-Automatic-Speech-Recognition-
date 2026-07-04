@@ -8,3 +8,5 @@
     "ruff format --force-exclude"
   ]
 }
+
+# [Apple MLX System Blueprint] Subsystem: Core Infrastructure & Build Orchestration Topology
