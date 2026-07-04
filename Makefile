@@ -58,5 +58,5 @@ clean: ## Remove Python and build cache files
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete
 	find . -type f -name "*.pyo" -delete
-	rm -rf .pytest_cache/ .coverage coverage.xml htmlcov/ dist/ .vite/
+	rm -rf .pytest_cache/ .coverage .coverage.* coverage.xml htmlcov/ dist/ .vite/ data/benchmark_results.json
 	@echo "🧹 Clean complete."
