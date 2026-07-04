@@ -339,11 +339,15 @@ def diarize_audio(file_path, hf_token):
     try:
         from asr_pro.services.diarization_service import DiarizationService
 
-        diarizer = DiarizationService.get_instance()
-        if hf_token and not diarizer.hf_token:
-            diarizer.hf_token = hf_token
-            diarizer.loaded = False
+        if hf_token:
+            os.environ["HF_TOKEN"] = hf_token
+            try:
+                from asr_pro.core.config import settings
+                settings.hf_token = hf_token
+            except Exception:
+                pass
 
+        diarizer = DiarizationService.get_instance()
         results = diarizer.diarize(file_path)
         if not results:
             return "Konuşmacı ayrımı yapıldı ancak sonuç boş."
