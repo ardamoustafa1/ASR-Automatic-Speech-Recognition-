@@ -1,3 +1,4 @@
+# Pydantic schemas for structuring alert notification requests and responses.
 from typing import Literal
 
 from pydantic import BaseModel
