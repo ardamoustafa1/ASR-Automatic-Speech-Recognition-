@@ -1,3 +1,4 @@
+# Pydantic schemas for call recordings, metadata, and diarized transcript segments.
 from typing import Optional
 
 from pydantic import BaseModel, Field
