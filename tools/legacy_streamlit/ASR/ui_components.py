@@ -1140,9 +1140,9 @@ def render_app():
             "Kelime Bulutu", value=True, help="Kapalıyken sonuç ekranı daha hızlı açılır."
         )
         diarization_mode = st.checkbox(
-            "Konuşmacı Ayrımı",
-            value=False,
-            help="Konuşmacıları A/B olarak ayırır (HF Token Gerekli).",
+            "Konuşmacı Ayrımı (Otomatik)",
+            value=True,
+            help="Analizi Başlat dendiğinde soldan seçmeye gerek kalmadan otomatik çalışır.",
         )
         reference_text = st.text_area(
             "Referans Metin (WER)",
@@ -1152,12 +1152,22 @@ def render_app():
             help="Boş bırakılırsa gerçek WER kanıtlanamaz; yalnızca ASR güven ve ses kalite skoru gösterilir",
         )
 
-        hf_token = ""
+        default_token = (
+            os.environ.get("HF_TOKEN")
+            or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+            or os.environ.get("ASR_HF_TOKEN", "")
+        )
+        hf_token = default_token
         if diarization_mode:
-            hf_token = st.text_input(
-                "Hugging Face Token", type="password", help="Pyannote modeli için gereklidir."
+            hf_token_input = st.text_input(
+                "Hugging Face Token",
+                value=default_token,
+                type="password",
+                help="Pyannote modeli için gereklidir (çevre değişkenlerinden otomatik alındı).",
             )
-            if not hf_token:
+            if hf_token_input:
+                hf_token = hf_token_input
+            elif not hf_token:
                 st.caption("Diarization aktif ama token girilmedi.")
 
         # SYSTEM HEALTH SECTION (Cached)
@@ -1730,18 +1740,24 @@ def render_app():
                                     elif keyword_result and keyword_result.get("error"):
                                         st.info(f"Anahtar kelime modülü: {keyword_result['error']}")
 
-                                # --- DIARIZATION (BETA) ---
+                                # --- DIARIZATION (OTOMATİK / BETA) ---
                                 diarization_result = None
-                                if diarization_mode and hf_token:
-                                    with st.spinner("Konuşmacı ayrımı yapılıyor..."):
-                                        diarization_result = diarize_audio(audio_path, hf_token)
+                                effective_token = (
+                                    hf_token
+                                    or os.environ.get("HF_TOKEN")
+                                    or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+                                    or os.environ.get("ASR_HF_TOKEN", "")
+                                )
+                                if effective_token:
+                                    with st.spinner("Konuşmacı ayrımı (Diarization) yapılıyor..."):
+                                        diarization_result = diarize_audio(audio_path, effective_token)
                                         if isinstance(diarization_result, str) and (
                                             "Hatası" in diarization_result
                                             or "Eksik" in diarization_result
                                         ):  # Hata döndü
                                             st.warning(f"Diarization Hatası: {diarization_result}")
                                         else:
-                                            st.success("Konuşmacı ayrımı tamamlandı.")
+                                            st.success("Konuşmacı ayrımı (Temsilci/Müşteri) otomatik tamamlandı.")
                                             with st.expander(
                                                 "Konuşmacı Ayrımı (A/B) Sonuçları", expanded=True
                                             ):
