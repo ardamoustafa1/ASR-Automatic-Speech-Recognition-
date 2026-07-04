@@ -1,3 +1,4 @@
+# Business logic orchestration layer coordinating transcription, diarization, and NLP engines.
 from __future__ import annotations
 
 """Persist conversations and keyword analysis results."""
