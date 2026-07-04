@@ -1,3 +1,4 @@
+# Makefile for automating build, testing, docker deployment, and cleaning operations.
 .PHONY: help dev dev-backend dev-frontend test build docker-up docker-down clean format lint security seed
 
 help: ## Show this help
