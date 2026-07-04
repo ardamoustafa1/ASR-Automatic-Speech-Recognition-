@@ -74,14 +74,17 @@ jobs:
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
-      - name: Run Benchmarks
-        run: python dev-scripts/run_benchmarks.py
+      - name: Run Acoustic WER Benchmark & Regression Check
+        run: |
+          # Fails the CI pipeline if Word Error Rate > 3.0%
+          export PYTHONPATH=$PYTHONPATH:$(pwd)
+          python scripts/evaluate_wer.py --max-wer 3.0
         
       - name: Upload Benchmark Results
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark-results
-          path: benchmark_results.json
+          name: wer-benchmark-results
+          path: data/wer_report.json
 
   # ─── Job 3: Frontend Tests & Build ───────────────────────────────────────
   test-frontend:
