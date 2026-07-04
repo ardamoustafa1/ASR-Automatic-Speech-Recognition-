@@ -2,6 +2,7 @@ import os
 import sys
 from pathlib import Path
 
+from loguru import logger
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -49,9 +50,8 @@ if not settings.jwt_secret_key:
     else:
         import secrets
 
-        print(
-            "WARNING: ASR_JWT_SECRET_KEY not set. Generating a temporary secret for development.",
-            file=sys.stderr,
+        logger.warning(
+            "ASR_JWT_SECRET_KEY not set. Generating ephemeral 256-bit secret for local development."
         )
         settings = settings.model_copy(update={"jwt_secret_key": secrets.token_hex(32)})
 
