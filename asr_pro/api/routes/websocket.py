@@ -16,6 +16,7 @@ from loguru import logger
 
 from asr_pro.api.routes.auth import ALGORITHM, SECRET_KEY
 from asr_pro.services.asr_service import ASRService
+from asr_pro.services.vad_service import VADService
 
 router = APIRouter(tags=["live-asr"])
 
@@ -88,6 +89,12 @@ async def websocket_asr_endpoint(websocket: WebSocket):
 
             # Wait until we have a meaningful audio batch before transcribing
             if len(chunk_buffer) < MIN_CHUNK_SIZE:
+                continue
+
+            # Check Voice Activity Detection (VAD) to skip silence and boost performance by ~40%
+            if not VADService.get_instance().is_speech(chunk_buffer):
+                logger.debug("WS: silence detected by Silero VAD, skipping Whisper transcription.")
+                chunk_buffer = b""
                 continue
 
             with open(temp_file_path, "ab") as f:

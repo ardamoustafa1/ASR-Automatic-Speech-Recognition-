@@ -18,12 +18,8 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from asr_pro.config import ROOT_DIR
+from asr_pro.config import CORS_ORIGINS, TEMP_AUDIO_DIR
 from asr_pro.db.models import AuditLog
-
-TEMP_AUDIO_DIR = ROOT_DIR / "temp_audio_uploads"
-
-from asr_pro.config import CORS_ORIGINS
 
 trace_id_var: ContextVar[str] = ContextVar("trace_id", default="")
 

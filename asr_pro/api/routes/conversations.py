@@ -2,7 +2,18 @@ from __future__ import annotations
 
 """API route: conversations — list, detail, and analysis endpoints."""
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+import shutil
+
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -16,9 +27,11 @@ from asr_pro.api.schemas.conversations import (
     KeywordHitOut,
     SegmentOut,
 )
+from asr_pro.config import TEMP_AUDIO_DIR
 from asr_pro.core.keyword_engine import SegmentInput, hits_to_dict
-from asr_pro.db.models import Conversation, KeywordHit, Topic, TranscriptSegmentRow
+from asr_pro.db.models import Conversation, KeywordHit, Topic, TranscriptSegmentRow, new_uuid
 from asr_pro.db.session import SessionLocal
+from asr_pro.services.asr_service import ASRService
 from asr_pro.services.conversation_service import (
     analyze_without_save,
     save_conversation_with_analysis,
@@ -63,6 +76,7 @@ def list_conversations(
             quality_gate_passed=c.quality_gate_passed,
             created_at=c.created_at.isoformat() if c.created_at else "",
             hit_count=hit_count_map.get(c.id, 0),
+            metadata_json=c.metadata_json,
         )
         for c in convs
     ]
@@ -102,6 +116,7 @@ def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
         created_at=conv.created_at.isoformat() if conv.created_at else "",
         hit_count=len(hits),
         topics=topics,
+        metadata_json=conv.metadata_json,
         segments=[
             SegmentOut(id=s.id, start=s.start, end=s.end, text=s.text, speaker=s.speaker)
             for s in segments
@@ -142,6 +157,68 @@ def _process_analysis_background(payload_data: dict, segments_data: list) -> Non
         )
     finally:
         db.close()
+
+
+def _process_audio_upload_background(file_path: str, filename: str, sector: str) -> None:
+    """Background task: transcribe audio file and run full NLP + Diarization analysis."""
+    from loguru import logger
+
+    db = SessionLocal()
+    try:
+        logger.info(f"Starting background ASR transcription for uploaded file: {filename}")
+        asr = ASRService.get_instance()
+        transcribe_result = asr.transcribe(file_path)
+        segments = [
+            SegmentInput(
+                start=float(s.get("start", 0)),
+                end=float(s.get("end", 0)),
+                text=str(s.get("text", "")),
+                speaker=s.get("speaker"),
+                segment_index=i,
+            )
+            for i, s in enumerate(transcribe_result.get("segments", []))
+        ]
+        save_conversation_with_analysis(
+            db,
+            segments_data=segments,
+            full_transcript=transcribe_result.get("text", "") or " ".join(s.text for s in segments),
+            sector=sector,
+            audio_path=file_path,
+            uploaded_name=filename,
+            asr_confidence=float(transcribe_result.get("confidence", 0.0)),
+            quality_gate_passed=True,
+        )
+        logger.info(f"Successfully processed uploaded conversation for {filename}")
+    except Exception as exc:
+        logger.error(f"Error processing uploaded audio {filename}: {exc}")
+    finally:
+        db.close()
+
+
+@router.post("/upload", status_code=202)
+@limiter.limit("20/minute")
+def upload_audio_file(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    sector: str = Query("omni"),
+):
+    """Upload an audio file (.wav, .mp3) for automated transcription, diarization, and NLP analysis."""
+    TEMP_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    safe_name = f"{new_uuid()}_{file.filename or 'audio.wav'}"
+    dest_path = str(TEMP_AUDIO_DIR / safe_name)
+
+    with open(dest_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    background_tasks.add_task(
+        _process_audio_upload_background, dest_path, file.filename or "audio.wav", sector
+    )
+    return {
+        "message": "Ses dosyası yüklendi ve transkripsiyon/diarization işlemi arka plana alındı.",
+        "status": "processing",
+        "filename": file.filename,
+    }
 
 
 @router.post("/analyze", status_code=202)

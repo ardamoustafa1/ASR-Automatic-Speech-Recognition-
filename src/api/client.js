@@ -58,6 +58,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ text, sector }),
     }),
+  uploadAudio: async (file, sector = "omni") => {
+    const formData = new window.FormData();
+    formData.append("file", file);
+    const res = await fetch(`${BASE}/conversations/upload?sector=${sector}`, {
+      method: "POST",
+      body: formData,
+      credentials: "include",
+    });
+    if (!res.ok) throw new Error((await res.text()) || "Upload failed");
+    return res.json();
+  },
   keywordRules: () => request("/keyword-rules"),
   createRule: (body) => request("/keyword-rules", { method: "POST", body: JSON.stringify(body) }),
   updateRule: (id, body) =>

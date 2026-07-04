@@ -35,6 +35,7 @@ class ConversationOut(BaseModel):
     created_at: str
     hit_count: int = 0
     topics: list[dict] = []
+    metadata_json: dict | None = None
 
 
 class ConversationDetail(ConversationOut):

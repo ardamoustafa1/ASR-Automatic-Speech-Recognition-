@@ -8,6 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT_DIR / "data"
+TEMP_AUDIO_DIR = ROOT_DIR / "temp_audio_uploads"
 
 load_dotenv(ROOT_DIR / ".env")
 
