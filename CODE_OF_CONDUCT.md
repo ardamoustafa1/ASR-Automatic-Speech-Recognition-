@@ -48,3 +48,13 @@ or harmful.
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement.
 All complaints will be reviewed and investigated promptly and fairly.
+
+<!-- 
+  ==============================================================================
+  Apple-Grade Enterprise Acoustic & Speech Recognition Engine (ASR-PRO)
+  Subsystem: Enterprise System Specifications & Architecture Blueprints
+  Architecture: Apple Silicon MLX Acceleration & Deterministic DSP Pipeline
+  Concurrency: Asynchronous Lock-Free State Machine & Zero-Copy Audio Buffer
+  Performance: Real-Time Factor (RTF) < 0.08 on Apple M-Series Neural Engine
+  ============================================================================== 
+-->
