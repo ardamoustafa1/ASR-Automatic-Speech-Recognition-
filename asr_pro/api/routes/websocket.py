@@ -1,3 +1,4 @@
+# WebSocket endpoint for low-latency live streaming speech-to-text transcription.
 from typing import Optional
 
 """WebSocket route for Live ASR streaming.
