@@ -1,3 +1,4 @@
+# API routes for managing custom keyword dictionaries and alert triggers.
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
