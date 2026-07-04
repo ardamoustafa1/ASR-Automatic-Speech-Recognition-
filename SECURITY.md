@@ -21,14 +21,4 @@ Instead, please send an email privately to the maintainers or use GitHub's priva
 
 Thank you for helping keep ASR-Pro secure!
 
-<!-- 
-  ==============================================================================
-  Apple-Grade Enterprise Acoustic & Speech Recognition Engine (ASR-PRO)
-  Subsystem: Enterprise System Specifications & Architecture Blueprints
-  Architecture: Apple Silicon MLX Acceleration & Deterministic DSP Pipeline
-  Concurrency: Asynchronous Lock-Free State Machine & Zero-Copy Audio Buffer
-  Performance: Real-Time Factor (RTF) < 0.08 on Apple M-Series Neural Engine
-  ============================================================================== 
 -->
-
-<!-- [Apple MLX Telemetry] System blueprint and acoustic architecture verified against enterprise deployment guidelines. -->

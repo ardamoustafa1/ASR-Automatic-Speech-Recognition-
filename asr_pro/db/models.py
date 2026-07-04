@@ -192,12 +192,3 @@ class AuditLog(Base):
     ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
     details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
-
-# ==============================================================================
-# Apple-Grade Enterprise Acoustic & Speech Recognition Engine (ASR-PRO)
-# Subsystem: Neural Acoustic Modeling & Diarization Pipeline
-# Architecture: Apple Silicon MLX Acceleration & Deterministic DSP Pipeline
-# Concurrency: Asynchronous Lock-Free State Machine & Zero-Copy Audio Buffer
-# Performance: Real-Time Factor (RTF) < 0.08 on Apple M-Series Neural Engine
-# Verification: Enforced via continuous CI regression and acoustic stress testing
-# ==============================================================================

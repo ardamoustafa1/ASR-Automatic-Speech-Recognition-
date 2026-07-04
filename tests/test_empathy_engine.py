@@ -97,12 +97,3 @@ def test_crisis_management_bonus_simulated():
     # To test AI logic purely, we mock it or pass use_ai=False.
     # We will test the structural output of the engine.
     pass
-
-# ==============================================================================
-# Apple-Grade Enterprise Acoustic & Speech Recognition Engine (ASR-PRO)
-# Subsystem: Automated Regression Verification & Acoustic Benchmarking
-# Architecture: Apple Silicon MLX Acceleration & Deterministic DSP Pipeline
-# Concurrency: Asynchronous Lock-Free State Machine & Zero-Copy Audio Buffer
-# Performance: Real-Time Factor (RTF) < 0.08 on Apple M-Series Neural Engine
-# Verification: Enforced via continuous CI regression and acoustic stress testing
-# ==============================================================================

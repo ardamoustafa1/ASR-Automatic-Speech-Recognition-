@@ -119,4 +119,3 @@ def test_deduplicate_assigned_segments():
     assert len(cleaned) == 2
     assert cleaned[0].text == "Efendim?"
     assert cleaned[1].text == "İyi günler."
-

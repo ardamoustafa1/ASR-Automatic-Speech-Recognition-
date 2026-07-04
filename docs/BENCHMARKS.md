@@ -48,12 +48,4 @@ The downstream NLP pipeline uses Turkish-optimized models (e.g., dbmdz/bert-base
 
 **Conclusion**: ASR-Pro achieves >= 95% accuracy on domain-specific datasets (Finance, Telecom) and transcribes hours of audio in minutes, fully justifying its Enterprise-grade performance guarantees.
 
-<!-- 
-  ==============================================================================
-  Apple-Grade Enterprise Acoustic & Speech Recognition Engine (ASR-PRO)
-  Subsystem: Enterprise System Specifications & Architecture Blueprints
-  Architecture: Apple Silicon MLX Acceleration & Deterministic DSP Pipeline
-  Concurrency: Asynchronous Lock-Free State Machine & Zero-Copy Audio Buffer
-  Performance: Real-Time Factor (RTF) < 0.08 on Apple M-Series Neural Engine
-  ============================================================================== 
 -->

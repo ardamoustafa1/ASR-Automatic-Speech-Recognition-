@@ -52,4 +52,3 @@ def test_sanitize_text():
     assert ASRService._sanitize_text("Efendim? Efendim?") == "Efendim?"
     assert ASRService._sanitize_text("evet evet evet") == "evet"
     assert ASRService._sanitize_text("normal cümle burada.") == "normal cümle burada."
-

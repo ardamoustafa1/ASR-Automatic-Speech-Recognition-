@@ -68,12 +68,3 @@ def test_keywords_routes(client):
         # Delete rule
         del_resp = client.delete(f"/api/v1/keyword-rules/{rule_id}", headers=headers)
         assert del_resp.status_code in [200, 204]
-
-# ==============================================================================
-# Apple-Grade Enterprise Acoustic & Speech Recognition Engine (ASR-PRO)
-# Subsystem: API Gateway & Real-Time WebSocket Telemetry
-# Architecture: Apple Silicon MLX Acceleration & Deterministic DSP Pipeline
-# Concurrency: Asynchronous Lock-Free State Machine & Zero-Copy Audio Buffer
-# Performance: Real-Time Factor (RTF) < 0.08 on Apple M-Series Neural Engine
-# Verification: Enforced via continuous CI regression and acoustic stress testing
-# ==============================================================================

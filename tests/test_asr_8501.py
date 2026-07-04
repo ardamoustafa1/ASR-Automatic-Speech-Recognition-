@@ -102,4 +102,3 @@ def test_sanitize_hallucinatory_repetitions():
     assert sanitize_hallucinatory_repetitions("bursa hanım bursa hanım bursa hanım") == "bursa hanım"
     # Normal text should remain untouched
     assert sanitize_hallucinatory_repetitions("Merhaba, nasılsınız? Ben iyiyim.") == "Merhaba, nasılsınız? Ben iyiyim."
-

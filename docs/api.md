@@ -122,12 +122,4 @@ curl -X GET "http://localhost:8000/api/v1/conversations?limit=10" \
 
 ASR-Pro supports firing webhooks when a critical alert is triggered. Configure `WEBHOOK_URL` in your `.env` file.
 
-<!-- 
-  ==============================================================================
-  Apple-Grade Enterprise Acoustic & Speech Recognition Engine (ASR-PRO)
-  Subsystem: API Gateway & Real-Time WebSocket Telemetry
-  Architecture: Apple Silicon MLX Acceleration & Deterministic DSP Pipeline
-  Concurrency: Asynchronous Lock-Free State Machine & Zero-Copy Audio Buffer
-  Performance: Real-Time Factor (RTF) < 0.08 on Apple M-Series Neural Engine
-  ============================================================================== 
 -->

@@ -23,14 +23,4 @@ Every action (login, manual deletion, configuration change) performed by an auth
 - Passwords are hashed using bcrypt.
 - The `AuditLog` table is append-only by the application logic.
 
-<!-- 
-  ==============================================================================
-  Apple-Grade Enterprise Acoustic & Speech Recognition Engine (ASR-PRO)
-  Subsystem: Enterprise System Specifications & Architecture Blueprints
-  Architecture: Apple Silicon MLX Acceleration & Deterministic DSP Pipeline
-  Concurrency: Asynchronous Lock-Free State Machine & Zero-Copy Audio Buffer
-  Performance: Real-Time Factor (RTF) < 0.08 on Apple M-Series Neural Engine
-  ============================================================================== 
 -->
-
-<!-- [Apple MLX Telemetry] System blueprint and acoustic architecture verified against enterprise deployment guidelines. -->

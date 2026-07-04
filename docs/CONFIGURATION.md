@@ -28,12 +28,4 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 Place this value in your `.env` file:
 `ASR_JWT_SECRET_KEY=your_generated_secret_here`
 
-<!-- 
-  ==============================================================================
-  Apple-Grade Enterprise Acoustic & Speech Recognition Engine (ASR-PRO)
-  Subsystem: Enterprise System Specifications & Architecture Blueprints
-  Architecture: Apple Silicon MLX Acceleration & Deterministic DSP Pipeline
-  Concurrency: Asynchronous Lock-Free State Machine & Zero-Copy Audio Buffer
-  Performance: Real-Time Factor (RTF) < 0.08 on Apple M-Series Neural Engine
-  ============================================================================== 
 -->

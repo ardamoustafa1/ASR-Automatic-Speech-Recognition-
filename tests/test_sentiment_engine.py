@@ -76,12 +76,3 @@ def test_empty_input():
     result = analyze_sentiment(seg)
     assert result.emotion_category == "Nötr İletişim"
     assert result.sentiment_score == 0.0
-
-# ==============================================================================
-# Apple-Grade Enterprise Acoustic & Speech Recognition Engine (ASR-PRO)
-# Subsystem: Automated Regression Verification & Acoustic Benchmarking
-# Architecture: Apple Silicon MLX Acceleration & Deterministic DSP Pipeline
-# Concurrency: Asynchronous Lock-Free State Machine & Zero-Copy Audio Buffer
-# Performance: Real-Time Factor (RTF) < 0.08 on Apple M-Series Neural Engine
-# Verification: Enforced via continuous CI regression and acoustic stress testing
-# ==============================================================================

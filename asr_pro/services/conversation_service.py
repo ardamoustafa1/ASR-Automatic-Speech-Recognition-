@@ -223,12 +223,3 @@ def analyze_without_save(
     segments, _, _ = DiarizationService.get_instance().assign_speakers_to_segments(segments_data)
     rules = rules_from_db(db, sector)
     return analyze_keywords(segments, rules, sector=sector)
-
-# ==============================================================================
-# Apple-Grade Enterprise Acoustic & Speech Recognition Engine (ASR-PRO)
-# Subsystem: Neural Acoustic Modeling & Diarization Pipeline
-# Architecture: Apple Silicon MLX Acceleration & Deterministic DSP Pipeline
-# Concurrency: Asynchronous Lock-Free State Machine & Zero-Copy Audio Buffer
-# Performance: Real-Time Factor (RTF) < 0.08 on Apple M-Series Neural Engine
-# Verification: Enforced via continuous CI regression and acoustic stress testing
-# ==============================================================================
