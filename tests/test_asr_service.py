@@ -20,11 +20,10 @@ def test_choose_device_and_compute(mock_machine, mock_system):
 
 
 @pytest.mark.skipif(os.environ.get("ASR_TEST_NO_MODEL") == "1", reason="No model tests")
-@patch("asr_pro.services.asr_service.subprocess.run")
-def test_check_cuda_failure(mock_run):
-    mock_run.side_effect = FileNotFoundError
-    svc = ASRService()
-    assert svc._check_cuda() is False
+def test_check_cuda_failure():
+    with patch("builtins.__import__", side_effect=ImportError("No torch")):
+        svc = ASRService()
+        assert svc._check_cuda() is False
 
 
 @pytest.mark.skipif(os.environ.get("ASR_TEST_NO_MODEL") == "1", reason="No model tests")
@@ -35,13 +34,16 @@ def test_transcribe(mock_whisper):
     mock_segment.start = 0.0
     mock_segment.end = 1.0
     mock_segment.text = "hello world"
-    mock_model.transcribe.return_value = ([mock_segment], {"language": "tr"})
+    mock_info = MagicMock()
+    mock_info.duration = 1.0
+    mock_model.transcribe.return_value = ([mock_segment], mock_info)
     mock_whisper.return_value = mock_model
 
     svc = ASRService()
-    svc.model = mock_model
+    svc._model = mock_model
+    svc._is_mlx = False
 
-    segments, info = svc.transcribe("fake_path.wav")
+    segments, duration = svc.transcribe("fake_path.wav")
     assert len(segments) == 1
-    assert segments[0]["text"] == "hello world"
-    assert info["language"] == "tr"
+    assert segments[0].text == "hello world"
+    assert duration == 1.0
