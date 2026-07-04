@@ -1,3 +1,4 @@
+# Generates concise executive summaries and action items from call transcripts.
 """Top-Tier CRM Auto-Note (Structured Summarization) Engine."""
 
 import json
