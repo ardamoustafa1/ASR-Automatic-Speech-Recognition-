@@ -1,3 +1,4 @@
+# Configuration settings and environment variable validation for ASR Pro.
 import os
 import sys
 from pathlib import Path
