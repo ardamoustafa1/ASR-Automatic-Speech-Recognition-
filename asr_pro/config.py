@@ -2,11 +2,14 @@ import os
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
 from loguru import logger
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT_DIR / "data"
+
+load_dotenv(ROOT_DIR / ".env")
 
 
 class Settings(BaseSettings):
@@ -36,6 +39,9 @@ class Settings(BaseSettings):
     # ─── Webhooks ─────────────────────────────────────────────────────────────
     webhook_url: str = ""
 
+    # ─── AI Models / Hugging Face ─────────────────────────────────────────────
+    hf_token: str = ""
+
     model_config = SettingsConfigDict(env_prefix="ASR_", env_file=".env", extra="ignore")
 
 
@@ -43,6 +49,12 @@ settings = Settings()
 
 # ─── Runtime Validation ───────────────────────────────────────────────────────
 _is_testing = os.getenv("ASR_TEST_NO_MODEL") == "1" or "pytest" in sys.modules
+
+# Sync Hugging Face Tokens for pyannote.audio and transformers
+_hf_token = settings.hf_token or os.getenv("HUGGING_FACE_HUB_TOKEN") or os.getenv("HF_TOKEN")
+if _hf_token:
+    os.environ["HUGGING_FACE_HUB_TOKEN"] = _hf_token
+    os.environ["HF_TOKEN"] = _hf_token
 
 if not settings.jwt_secret_key:
     if os.getenv("ASR_ENV") == "prod":
