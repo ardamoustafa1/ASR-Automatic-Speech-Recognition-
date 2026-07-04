@@ -1,3 +1,4 @@
+# Speech recognition service integrating Faster-Whisper and MLX acceleration.
 """Thread-safe Singleton ASR Service using Faster-Whisper."""
 
 import os
