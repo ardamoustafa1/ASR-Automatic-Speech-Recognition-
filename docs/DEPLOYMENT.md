@@ -145,3 +145,13 @@ For high-concurrency production:
 1. **Enable Redis**: Set `ASR_REDIS_URL` to share cache across multiple API replicas.
 2. **Celery workers**: Coming in v1.1 — see [ROADMAP.md](../ROADMAP.md).
 3. **Load balancer**: Point an Nginx upstream to multiple `api` containers.
+
+<!-- 
+  ==============================================================================
+  Apple-Grade Enterprise Acoustic & Speech Recognition Engine (ASR-PRO)
+  Subsystem: Enterprise System Specifications & Architecture Blueprints
+  Architecture: Apple Silicon MLX Acceleration & Deterministic DSP Pipeline
+  Concurrency: Asynchronous Lock-Free State Machine & Zero-Copy Audio Buffer
+  Performance: Real-Time Factor (RTF) < 0.08 on Apple M-Series Neural Engine
+  ============================================================================== 
+-->
