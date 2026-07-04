@@ -17,6 +17,14 @@ import srt
 import streamlit as st
 from config import *
 
+
+def lock_language(lang):
+    """Locks ASR language to Turkish ('tr') when auto-detection or empty language is passed."""
+    if not lang or str(lang).strip().lower() in ("auto", "otomatik", "auto-detect", "detect", "default", "none", "null", ""):
+        return "tr"
+    return str(lang).strip().lower()
+
+
 _torch = None
 _plt = None
 _WordCloud = None
@@ -207,7 +215,7 @@ class MLXWhisperWrapper:
         # MLX Whisper re-detects language if `language` key is missing from decode_options.
         # When the model hears English brand names (YouTube, Netflix, WhatsApp), it may
         # switch the decoder language. Force it to stay in the specified language.
-        mlx_kwargs["language"] = mlx_kwargs.get("language") or kwargs.get("language") or "tr"
+        mlx_kwargs["language"] = lock_language(mlx_kwargs.get("language") or kwargs.get("language"))
 
         if kwargs.get("max_new_tokens") and "sample_len" not in mlx_kwargs:
             mlx_kwargs["sample_len"] = kwargs["max_new_tokens"]
@@ -1247,7 +1255,7 @@ def build_initial_prompt(hotwords: str = ""):
 def build_transcribe_options(profile: ASRProfile, lang: str, task: str, hotwords: str = ""):
     clean_hotwords = hotwords.strip() or None
     options = {
-        "language": lang or "tr",
+        "language": lock_language(lang),
         "task": task,
         "beam_size": profile.beam_size,
         "best_of": profile.best_of,
@@ -2332,7 +2340,7 @@ def redecode_low_confidence_segments(
         # Yeniden çöz: farklı parametrelerle
         try:
             retry_options = {
-                "language": lang,
+                "language": lock_language(lang),
                 "task": "transcribe",
                 "beam_size": 10,
                 "best_of": 10,

@@ -7,7 +7,7 @@ import re
 import threading
 import warnings
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 from loguru import logger
 
@@ -25,6 +25,17 @@ class TranscriptionSegment:
     end: float
     text: str
     speaker: Optional[str] = None
+
+
+def lock_language(lang: Any) -> str:
+    """Locks ASR language to Turkish ('tr') when auto-detection or empty language is passed.
+
+    Prevents Whisper from switching languages mid-audio when encountering English
+    brand names (e.g., YouTube, WhatsApp, Netflix).
+    """
+    if not lang or str(lang).strip().lower() in ("auto", "otomatik", "auto-detect", "detect", "default", "none", "null", ""):
+        return "tr"
+    return str(lang).strip().lower()
 
 
 class ASRService:
@@ -275,6 +286,7 @@ class ASRService:
         self, audio_input: Any, language: str = "tr"
     ) -> tuple[list[TranscriptionSegment], float]:
         """Transcribe a mono file path or 1D audio numpy array."""
+        language = lock_language(language)
         if self._is_mlx:
             import mlx_whisper
 
@@ -333,6 +345,7 @@ class ASRService:
         If a stereo file is detected, Left and Right channels are transcribed separately
         to guarantee 100% clean speaker separation without overlapping dialog in segments.
         """
+        language = lock_language(language)
         if self._model is None:
             self.load_model()
 
