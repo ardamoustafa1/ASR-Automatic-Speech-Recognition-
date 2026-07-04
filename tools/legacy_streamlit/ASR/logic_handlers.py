@@ -335,35 +335,28 @@ def create_wordcloud(text):
 
 
 def diarize_audio(file_path, hf_token):
-    """Pyannote ile konuşmacı ayrımı yapar."""
+    """Pyannote 3.1 ile (Apple Silicon MPS / GPU destekli) gerçek konuşmacı ayrımı yapar."""
     try:
-        from pyannote.audio import Pipeline
-    except ImportError:
-        return "Eksik Kütüphane: 'pyannote.audio' yüklü değil. Terminalde 'pip install pyannote.audio' çalıştırın."
+        from asr_pro.services.diarization_service import DiarizationService
 
-    try:
-        # Pipeline'ı yükle
-        pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization", use_auth_token=hf_token)
+        diarizer = DiarizationService.get_instance()
+        if hf_token and not diarizer.hf_token:
+            diarizer.hf_token = hf_token
+            diarizer.loaded = False
 
-        if pipeline is None:
-            return "Model yüklenemedi. Token'ı kontrol edin veya Hugging Face üzerinden koşulları kabul ettiğinizden emin olun (pyannote/speaker-diarization)."
+        results = diarizer.diarize(file_path)
+        if not results:
+            return "Konuşmacı ayrımı yapıldı ancak sonuç boş."
 
-        # GPU varsa kullan
-        torch = get_torch()
-        if torch.cuda.is_available():
-            pipeline.to(torch.device("cuda"))
-
-        diarization = pipeline(file_path)
-
-        # Sonuçları okunabilir formata çevir
         result_str = ""
-        for turn, _, speaker in diarization.itertracks(yield_label=True):
-            result_str += f"start={turn.start:.1f}s stop={turn.end:.1f}s speaker_{speaker}\n"
+        for start, end, speaker in results:
+            result_str += f"start={start:.1f}s stop={end:.1f}s speaker_{speaker}\n"
 
         return result_str if result_str else "Konuşmacı ayrımı yapıldı ancak sonuç boş."
 
     except Exception as e:
         return f"Diarization Hatası: {str(e)}"
+
 
 
 # --- ZAMAN DAMGALI TRANSKRİPSİYON & KÜFÜR TESPİTİ FONKSİYONU ---
