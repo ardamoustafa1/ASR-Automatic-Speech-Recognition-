@@ -1,3 +1,4 @@
+# FastAPI dependency injection utilities including authentication and database session providers.
 """API dependencies — database session and rate limiter."""
 
 import jwt
