@@ -1054,6 +1054,20 @@ def sanitize_hallucinatory_repetitions(text: str) -> str:
     if not text or not text.strip():
         return text
     
+    # 0. Clean up known Whisper silence/noise hallucinations (common subtitle artifacts)
+    hallucinated_phrases = [
+        r"^Altyazı[\s:.-]*.*$",
+        r"^Subtitle[\s:.-]*.*$",
+        r"^Amara\.org.*$",
+        r"^MBC.*$",
+        r"^izlediğiniz için teşekkürler[\s.!]*$",
+        r"^videoyu beğenmeyi unutmayın[\s.!]*$",
+        r"^kanalıma abone olmayı unutmayın[\s.!]*$",
+    ]
+    for hp in hallucinated_phrases:
+        if re.match(hp, text.strip(), flags=re.IGNORECASE):
+            return ""
+
     # 1. Clean up Whisper dot hallucinations
     text = re.sub(r'(\s*\.\s*){3,}', '... ', text)
     text = re.sub(r'\.{4,}', '... ', text)
@@ -1106,7 +1120,7 @@ def deduplicate_segment_sequence(segments: list) -> list:
         
         is_dup = False
         if spk in recent_by_speaker:
-            for prev_start, prev_end, prev_norm in recent_by_speaker[spk][-4:]:
+            for _prev_start, prev_end, prev_norm in recent_by_speaker[spk][-4:]:
                 gap = start - prev_end
                 if norm == prev_norm and gap < 25.0:
                     is_dup = True
@@ -1262,9 +1276,9 @@ def build_transcribe_options(profile: ASRProfile, lang: str, task: str, hotwords
         "patience": 1.0,
         "temperature": profile.temperature,
         "compression_ratio_threshold": 2.0,
-        "log_prob_threshold": profile.log_prob_threshold,
-        "no_speech_threshold": profile.no_speech_threshold,
-        "condition_on_previous_text": profile.condition_on_previous_text,
+        "log_prob_threshold": max(getattr(profile, "log_prob_threshold", -0.8), -0.8),
+        "no_speech_threshold": min(getattr(profile, "no_speech_threshold", 0.6), 0.6),
+        "condition_on_previous_text": False,
         "no_repeat_ngram_size": 3,
         "initial_prompt": build_initial_prompt(hotwords),
         "vad_filter": profile.vad_filter,
@@ -1356,6 +1370,17 @@ def repeated_ngram_ratio(words, n=3):
 
 def is_suspicious_asr_segment(segment, text: str):
     """Apple-level agresif halüsinasyon tespiti."""
+    no_speech_prob = float(getattr(segment, "no_speech_prob", 0.0) or 0.0)
+    avg_logprob = float(getattr(segment, "avg_logprob", -1.0) or -1.0)
+    compression_ratio = float(getattr(segment, "compression_ratio", 1.0) or 1.0)
+
+    # Kullanıcı isteği: no_speech_prob yüksek olan segmentleri (>0.6) otomatik at
+    if no_speech_prob > 0.6:
+        return True
+    # Kullanıcı isteği: logprob_threshold (-0.8) ile düşük güvenilirlikli segmentleri ele
+    if avg_logprob < -0.8 and (compression_ratio > 1.8 or len(text.strip().split()) < 3):
+        return True
+
     words = normalize_for_wer(text)
     
     # Sadece noktalama işaretinden oluşan veya anlamsız kısa segmentleri yakala
@@ -1371,9 +1396,6 @@ def is_suspicious_asr_segment(segment, text: str):
     unique_ratio = len(set(words)) / len(words)
     trigram_repeat = repeated_ngram_ratio(words, n=3)
     bigram_repeat = repeated_ngram_ratio(words, n=2)
-    compression_ratio = float(getattr(segment, "compression_ratio", 1.0) or 1.0)
-    avg_logprob = float(getattr(segment, "avg_logprob", -1.0) or -1.0)
-    no_speech_prob = float(getattr(segment, "no_speech_prob", 0.0) or 0.0)
 
     # Agresif eşikler (Yüksek Doğruluk)
     if len(words) >= 12 and unique_ratio < 0.30:
@@ -2348,7 +2370,7 @@ def redecode_low_confidence_segments(
                 "patience": 1.2,
                 "temperature": (0.0, 0.2, 0.4),
                 "compression_ratio_threshold": 2.0,
-                "log_prob_threshold": -1.0,
+                "log_prob_threshold": -0.8,
                 "no_speech_threshold": 0.3,
                 "condition_on_previous_text": False,
                 "no_repeat_ngram_size": 5,

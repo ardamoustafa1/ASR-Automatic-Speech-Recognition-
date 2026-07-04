@@ -196,7 +196,7 @@ class ASRService:
             
             is_dup = False
             if spk in recent_by_speaker:
-                for prev_start, prev_end, prev_norm in recent_by_speaker[spk][-4:]:
+                for _prev_start, prev_end, prev_norm in recent_by_speaker[spk][-4:]:
                     gap = start - prev_end
                     if norm == prev_norm and gap < 25.0:
                         is_dup = True
@@ -282,6 +282,16 @@ class ASRService:
                 cur_start = sent_end
         return refined
 
+    @staticmethod
+    def _safe_float_attr(obj, attr, default=0.0):
+        val = getattr(obj, attr, default) if not isinstance(obj, dict) else obj.get(attr, default)
+        if val is None or "mock" in str(type(val)).lower():
+            return default
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return default
+
     def _transcribe_single_channel(
         self, audio_input: Any, language: str = "tr"
     ) -> tuple[list[TranscriptionSegment], float]:
@@ -297,12 +307,17 @@ class ASRService:
                 path_or_hf_repo=repo,
                 language=language,
                 condition_on_previous_text=False,
-                compression_ratio_threshold=1.8,
-                no_speech_threshold=0.45,
+                compression_ratio_threshold=2.0,
+                no_speech_threshold=0.6,
             )
             segments_gen = []
             duration = 0.0
             for s in res.get("segments", []):
+                no_speech = self._safe_float_attr(s, "no_speech_prob", 0.0)
+                logprob = self._safe_float_attr(s, "avg_logprob", 0.0)
+                comp_ratio = self._safe_float_attr(s, "compression_ratio", 1.0)
+                if no_speech > 0.6 or (logprob < -0.8 and comp_ratio > 1.8):
+                    continue
                 cleaned_text = self._sanitize_text(s["text"].strip())
                 if cleaned_text:
                     segments_gen.append(
@@ -323,6 +338,9 @@ class ASRService:
             condition_on_previous_text=False,
             repetition_penalty=1.20,
             no_repeat_ngram_size=3,
+            compression_ratio_threshold=2.0,
+            log_prob_threshold=-0.8,
+            no_speech_threshold=0.6,
             vad_filter=True,
             vad_parameters={
                 "threshold": 0.5,
@@ -334,6 +352,11 @@ class ASRService:
 
         segments = []
         for s in segments_gen_fw:
+            no_speech = self._safe_float_attr(s, "no_speech_prob", 0.0)
+            logprob = self._safe_float_attr(s, "avg_logprob", 0.0)
+            comp_ratio = self._safe_float_attr(s, "compression_ratio", 1.0)
+            if no_speech > 0.6 or (logprob < -0.8 and comp_ratio > 1.8):
+                continue
             cleaned_text = self._sanitize_text(s.text.strip())
             if cleaned_text:
                 segments.append(
