@@ -1,3 +1,4 @@
+# API routes for querying, acknowledging, and managing system alerts.
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
