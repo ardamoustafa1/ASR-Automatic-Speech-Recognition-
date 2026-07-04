@@ -1,3 +1,4 @@
+# Aggregates call center analytics to detect emerging topic and sentiment trends.
 """Top-Tier Customer Journey & Early Warning Trend Engine (SQLAlchemy refactored)."""
 
 from dataclasses import dataclass
