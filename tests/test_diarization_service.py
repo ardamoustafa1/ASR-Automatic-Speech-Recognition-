@@ -59,3 +59,64 @@ def test_heuristic_speaker_alternation():
     assert aligned[1].speaker == "SPEAKER_01"
     assert agent_id == "SPEAKER_00"
     assert customer_id == "SPEAKER_01"
+
+
+def test_stereo_audio_diarization_and_alignment(tmp_path):
+    import wave
+    import numpy as np
+
+    file_path = str(tmp_path / "test_stereo.wav")
+    sr = 16000
+    duration = 2.0
+    n_samples = int(duration * sr)
+
+    # Left channel: active 0.0 to 1.0s (SPEAKER_00)
+    left_ch = np.zeros(n_samples, dtype=np.int16)
+    left_ch[:sr] = np.random.normal(0, 10000, sr).astype(np.int16)
+
+    # Right channel: active 1.0 to 2.0s (SPEAKER_01)
+    right_ch = np.zeros(n_samples, dtype=np.int16)
+    right_ch[sr:] = np.random.normal(0, 10000, n_samples - sr).astype(np.int16)
+
+    stereo_data = np.empty((n_samples * 2,), dtype=np.int16)
+    stereo_data[0::2] = left_ch
+    stereo_data[1::2] = right_ch
+
+    with wave.open(file_path, "wb") as wf:
+        wf.setnchannels(2)
+        wf.setsampwidth(2)
+        wf.setframerate(sr)
+        wf.writeframes(stereo_data.tobytes())
+
+    service = DiarizationService.get_instance()
+    assert service.is_stereo_audio(file_path) is True
+
+    segments = [
+        SegmentInput(start=0.0, end=0.9, text="Merhaba, hoş geldiniz.", speaker=None),
+        SegmentInput(start=1.1, end=1.9, text="Teşekkürler, bir sorunum vardı.", speaker=None),
+    ]
+
+    aligned, agent_id, customer_id = service.assign_speakers_to_segments(segments, audio_path=file_path)
+    assert len(aligned) == 2
+    assert aligned[0].speaker == "SPEAKER_00"
+    assert aligned[1].speaker == "SPEAKER_01"
+
+    turns = service.diarize(file_path)
+    assert len(turns) >= 2
+    assert any(t.speaker == "SPEAKER_00" for t in turns)
+    assert any(t.speaker == "SPEAKER_01" for t in turns)
+
+
+def test_deduplicate_assigned_segments():
+    service = DiarizationService.get_instance()
+    segs = [
+        SegmentInput(start=0.0, end=2.0, text="Efendim?", speaker="SPEAKER_01"),
+        SegmentInput(start=2.0, end=4.0, text="Efendim?", speaker="SPEAKER_01"),
+        SegmentInput(start=4.0, end=6.0, text="Efendim?", speaker="SPEAKER_01"),
+        SegmentInput(start=6.0, end=8.0, text="İyi günler.", speaker="SPEAKER_01"),
+    ]
+    cleaned = service._deduplicate_assigned_segments(segs)
+    assert len(cleaned) == 2
+    assert cleaned[0].text == "Efendim?"
+    assert cleaned[1].text == "İyi günler."
+
