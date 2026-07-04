@@ -51,15 +51,15 @@ ASR_CONTEXT_ERROR_MARKERS = (
 AUDIO_PREP_FILTERS = {
     AUDIO_PREP_STANDARD: (
         "Standart Netleştirme",
-        "highpass=f=80,lowpass=f=7800,loudnorm=I=-18:TP=-2:LRA=11",
+        "highpass=f=80,lowpass=f=8000,afftdn=nr=10:nf=-25,loudnorm=I=-16:TP=-1.5:LRA=11",
     ),
     AUDIO_PREP_RESCUE: (
         "Kötü Ses Kurtarma",
-        "highpass=f=70,lowpass=f=7600,afftdn=nr=10:nf=-25,"
+        "highpass=f=70,lowpass=f=8000,afftdn=nr=10:nf=-25,"
         "speechnorm=e=12.5:r=0.0001:l=1,"
         "dynaudnorm=f=150:g=15:p=0.95:m=8,"
         "acompressor=threshold=-24dB:ratio=2.5:attack=5:release=80,"
-        "loudnorm=I=-18:TP=-2:LRA=8",
+        "loudnorm=I=-16:TP=-1.5:LRA=11",
     ),
 }
 
