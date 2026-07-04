@@ -96,15 +96,28 @@ def save_conversation_with_analysis(
     metadata: dict | None = None,
 ) -> dict:
     from asr_pro.core.churn_engine import analyze_churn_risk
+    from asr_pro.core.empathy_engine import analyze_soft_skills
+    from asr_pro.services.diarization_service import DiarizationService
 
-    segments = segments_from_any(segments_data)
+    # 1. Perform Speaker Diarization & Role Assignment (Agent vs Customer)
+    diarizer = DiarizationService.get_instance()
+    segments, agent_speaker_id, customer_speaker_id = diarizer.assign_speakers_to_segments(
+        segments_data, audio_path=audio_path
+    )
+    if speakers and not agent_speaker_id:
+        agent_speaker_id = speakers[0] if len(speakers) > 0 else "SPEAKER_00"
+        customer_speaker_id = speakers[1] if len(speakers) > 1 else "SPEAKER_01"
+
+    # 2. Analyze Keyword Rules & Topics
     rules = rules_from_db(db, sector)
     hits = analyze_keywords(segments, rules, sector=sector)
     topics = topics_from_db(db)
     topic_matches = classify_topics_from_hits(hits, topics)
 
-    # Calculate Churn Risk
-    customer_speaker_id = speakers[0] if speakers else None  # Optional assumption
+    # 3. Analyze Agent Soft Skills & Empathy (using identified agent_speaker_id)
+    empathy_result = analyze_soft_skills(segments, agent_speaker_id=agent_speaker_id)
+
+    # 4. Calculate Customer Churn Risk (using identified customer_speaker_id)
     churn_result = analyze_churn_risk(segments, customer_speaker_id=customer_speaker_id)
 
     duration = max((s.end for s in segments), default=0.0)
@@ -112,6 +125,10 @@ def save_conversation_with_analysis(
     final_metadata = {"uploaded_name": uploaded_name, **(metadata or {})}
     final_metadata["churn_risk"] = churn_result.risk_score
     final_metadata["is_high_risk"] = churn_result.is_high_risk
+    final_metadata["empathy_score"] = empathy_result.score
+    final_metadata["empathy_summary"] = empathy_result.analysis_summary
+    final_metadata["agent_speaker_id"] = agent_speaker_id
+    final_metadata["customer_speaker_id"] = customer_speaker_id
 
     conv = Conversation(
         id=new_uuid(),
@@ -134,7 +151,8 @@ def save_conversation_with_analysis(
             start=seg.start,
             end=seg.end,
             text=seg.text,
-            speaker=seg.speaker or (speakers[idx] if speakers and idx < len(speakers) else None),
+            speaker=seg.speaker
+            or (speakers[idx] if speakers and idx < len(speakers) else "SPEAKER_00"),
             avg_logprob=getattr(segments_data[idx], "avg_logprob", -1.0)
             if idx < len(segments_data)
             else -1.0,
@@ -179,6 +197,18 @@ def save_conversation_with_analysis(
         ],
         "hit_count": len(hits),
         "alerts_triggered": len(alert_events),
+        "diarization": {
+            "agent_speaker_id": agent_speaker_id,
+            "customer_speaker_id": customer_speaker_id,
+        },
+        "empathy": {
+            "score": empathy_result.score,
+            "summary": empathy_result.analysis_summary,
+        },
+        "churn": {
+            "risk_score": churn_result.risk_score,
+            "is_high_risk": churn_result.is_high_risk,
+        },
     }
 
 
@@ -187,6 +217,8 @@ def analyze_without_save(
     segments_data: Sequence[Any],
     sector: str = "omni",
 ) -> list[KeywordHitResult]:
-    segments = segments_from_any(segments_data)
+    from asr_pro.services.diarization_service import DiarizationService
+
+    segments, _, _ = DiarizationService.get_instance().assign_speakers_to_segments(segments_data)
     rules = rules_from_db(db, sector)
     return analyze_keywords(segments, rules, sector=sector)
