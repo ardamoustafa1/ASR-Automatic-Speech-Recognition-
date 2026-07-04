@@ -1,3 +1,4 @@
+# Voice Activity Detection service using Silero VAD to filter non-speech audio segments.
 from __future__ import annotations
 
 """Voice Activity Detection (VAD) Service using Silero VAD with robust high-speed energy fallback."""
