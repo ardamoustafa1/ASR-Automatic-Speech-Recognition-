@@ -1,5 +1,5 @@
 import datetime
-import random
+import secrets
 
 from sqlalchemy.orm import Session
 
@@ -7,9 +7,9 @@ from asr_pro.api.deps import get_db
 from asr_pro.db.models import Conversation, TranscriptSegmentRow, new_uuid
 
 
-def seed_fake_conversations():
+def seed_demo_conversations():
     db: Session = next(get_db())
-    
+
     convs = [
         {
             "sector": "omni",
@@ -18,9 +18,19 @@ def seed_fake_conversations():
             "asr_confidence": 0.96,
             "quality_gate_passed": True,
             "segments": [
-                {"start": 0.0, "end": 2.5, "text": "Merhaba, internet faturam çok yüksek gelmiş.", "speaker": "customer"},
-                {"start": 3.0, "end": 6.5, "text": "Geçen ayki zam yanlış yansımış, iade talep ediyorum.", "speaker": "customer"}
-            ]
+                {
+                    "start": 0.0,
+                    "end": 2.5,
+                    "text": "Merhaba, internet faturam çok yüksek gelmiş.",
+                    "speaker": "customer",
+                },
+                {
+                    "start": 3.0,
+                    "end": 6.5,
+                    "text": "Geçen ayki zam yanlış yansımış, iade talep ediyorum.",
+                    "speaker": "customer",
+                },
+            ],
         },
         {
             "sector": "telco",
@@ -29,9 +39,19 @@ def seed_fake_conversations():
             "asr_confidence": 0.94,
             "quality_gate_passed": True,
             "segments": [
-                {"start": 0.0, "end": 4.0, "text": "Aboneliğimi iptal etmek istiyorum.", "speaker": "customer"},
-                {"start": 4.5, "end": 8.0, "text": "Rakip operatör daha iyi bir kampanya sundu.", "speaker": "customer"}
-            ]
+                {
+                    "start": 0.0,
+                    "end": 4.0,
+                    "text": "Aboneliğimi iptal etmek istiyorum.",
+                    "speaker": "customer",
+                },
+                {
+                    "start": 4.5,
+                    "end": 8.0,
+                    "text": "Rakip operatör daha iyi bir kampanya sundu.",
+                    "speaker": "customer",
+                },
+            ],
         },
         {
             "sector": "finance",
@@ -40,10 +60,20 @@ def seed_fake_conversations():
             "asr_confidence": 0.98,
             "quality_gate_passed": True,
             "segments": [
-                {"start": 0.0, "end": 5.0, "text": "Kredi kartı ekstremdeki bir işleme itiraz etmek istiyorum.", "speaker": "customer"},
-                {"start": 5.5, "end": 9.5, "text": "Ben böyle bir harcama yapmadım, şikayetçiyim.", "speaker": "customer"}
-            ]
-        }
+                {
+                    "start": 0.0,
+                    "end": 5.0,
+                    "text": "Kredi kartı ekstremdeki bir işleme itiraz etmek istiyorum.",
+                    "speaker": "customer",
+                },
+                {
+                    "start": 5.5,
+                    "end": 9.5,
+                    "text": "Ben böyle bir harcama yapmadım, şikayetçiyim.",
+                    "speaker": "customer",
+                },
+            ],
+        },
     ]
 
     for c in convs:
@@ -55,10 +85,11 @@ def seed_fake_conversations():
             full_transcript=c["full_transcript"],
             asr_confidence=c["asr_confidence"],
             quality_gate_passed=c["quality_gate_passed"],
-            created_at=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=random.randint(0, 5))
+            created_at=datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(days=secrets.randbelow(6)),
         )
         db.add(conversation)
-        
+
         for s in c["segments"]:
             seg = TranscriptSegmentRow(
                 id=new_uuid(),
@@ -66,12 +97,13 @@ def seed_fake_conversations():
                 start=s["start"],
                 end=s["end"],
                 text=s["text"],
-                speaker=s["speaker"]
+                speaker=s["speaker"],
             )
             db.add(seg)
-            
+
     db.commit()
-    print("Seeded fake conversations successfully.")
+    print("Seeded demo conversations successfully.")
+
 
 if __name__ == "__main__":
-    seed_fake_conversations()
+    seed_demo_conversations()
