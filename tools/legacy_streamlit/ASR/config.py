@@ -495,7 +495,7 @@ class ASRProfile:
     hallucination_silence_threshold: float = None
 
 
-@dataclass(frozen=True)
+@dataclass
 class TranscriptSegment:
     start: float
     end: float
@@ -504,6 +504,7 @@ class TranscriptSegment:
     no_speech_prob: float = 0.0
     compression_ratio: float = 1.0
     raw_text: str = ""
+    speaker: str | None = None
 
 
 @dataclass(frozen=True)
@@ -519,12 +520,12 @@ class DomainProfile:
 ASR_PROFILES = {
     "mac_turbo_sla": ASRProfile(
         label="Mac Turbo 20sn Yüksek Kalite",
-        description="Apple Silicon + turbo model: beam=4, bağlam koruması açık (doğruluk için). Türkçe çağrı merkezi için optimize edildi.",
+        description="Apple Silicon + turbo model: beam=4, bağlam koruması kapalı (loop engelleme için). Türkçe çağrı merkezi için optimize edildi.",
         use_batched=False,
         batch_size=1,
         beam_size=4,
         best_of=4,
-        condition_on_previous_text=True,
+        condition_on_previous_text=False,
         chunk_length=20,
         vad_threshold=0.38,
         min_silence_duration_ms=380,
@@ -532,19 +533,19 @@ ASR_PROFILES = {
         temperature=(0.0, 0.2),
         log_prob_threshold=-1.0,
         no_speech_threshold=0.45,
-        repetition_penalty=1.20,
+        repetition_penalty=1.22,
         quality_gate=92.0,
         retry_profile_key="rescue",
         hallucination_silence_threshold=1.0,
     ),
     "ultimate_hybrid": ASRProfile(
         label="Nihai Hibrit Hız ve Kalite",
-        description="Hızlı kurumsal denge: batch çözümleme, güçlü bağlam, kalite düşükse otomatik kurtarma geçişi.",
+        description="Hızlı kurumsal denge: batch çözümleme, temiz bağlam, kalite düşükse otomatik kurtarma geçişi.",
         use_batched=True,
         batch_size=8,
         beam_size=4,
         best_of=4,
-        condition_on_previous_text=True,
+        condition_on_previous_text=False,
         chunk_length=20,
         vad_threshold=0.30,
         min_silence_duration_ms=550,
@@ -552,7 +553,7 @@ ASR_PROFILES = {
         temperature=(0.0, 0.2, 0.4),
         log_prob_threshold=-1.05,
         no_speech_threshold=0.48,
-        repetition_penalty=1.15,
+        repetition_penalty=1.20,
         quality_gate=93.0,
         retry_profile_key="rescue",
         hallucination_silence_threshold=1.0,
@@ -564,7 +565,7 @@ ASR_PROFILES = {
         batch_size=1,
         beam_size=7,
         best_of=7,
-        condition_on_previous_text=True,
+        condition_on_previous_text=False,
         chunk_length=30,
         vad_threshold=0.22,
         min_silence_duration_ms=900,
@@ -572,7 +573,7 @@ ASR_PROFILES = {
         temperature=(0.0, 0.2, 0.4, 0.6),
         log_prob_threshold=-1.20,
         no_speech_threshold=0.35,
-        repetition_penalty=1.15,
+        repetition_penalty=1.20,
         quality_gate=94.0,
         retry_profile_key="rescue",
         hallucination_silence_threshold=1.0,
@@ -584,7 +585,7 @@ ASR_PROFILES = {
         batch_size=1,
         beam_size=10,
         best_of=10,
-        condition_on_previous_text=True,
+        condition_on_previous_text=False,
         chunk_length=25,
         vad_threshold=0.18,
         min_silence_duration_ms=1200,
@@ -592,19 +593,19 @@ ASR_PROFILES = {
         temperature=(0.0, 0.1, 0.2, 0.3, 0.5),
         log_prob_threshold=-0.8,
         no_speech_threshold=0.30,
-        repetition_penalty=1.15,
+        repetition_penalty=1.20,
         quality_gate=95.0,
         retry_profile_key="rescue",
         hallucination_silence_threshold=0.8,
     ),
     "enterprise": ASRProfile(
         label="Kurumsal Maksimum Doğruluk",
-        description="Şirket teslimi için en yüksek doğruluk: güçlü beam, geniş bağlam, otomatik düşük-güven yeniden deneme.",
+        description="Şirket teslimi için en yüksek doğruluk: güçlü beam, bağımsız bağlam, otomatik düşük-güven yeniden deneme.",
         use_batched=False,
         batch_size=1,
         beam_size=5,
         best_of=5,
-        condition_on_previous_text=True,
+        condition_on_previous_text=False,
         chunk_length=24,
         vad_threshold=0.28,
         min_silence_duration_ms=700,
@@ -612,7 +613,7 @@ ASR_PROFILES = {
         temperature=(0.0, 0.2, 0.4),
         log_prob_threshold=-1.05,
         no_speech_threshold=0.45,
-        repetition_penalty=1.15,
+        repetition_penalty=1.20,
         quality_gate=ASR_CONFIDENCE_RETRY_THRESHOLD,
         retry_profile_key="rescue",
     ),
@@ -623,7 +624,7 @@ ASR_PROFILES = {
         batch_size=8,
         beam_size=3,
         best_of=3,
-        condition_on_previous_text=True,
+        condition_on_previous_text=False,
         chunk_length=18,
         vad_threshold=0.35,
         min_silence_duration_ms=450,
@@ -631,19 +632,19 @@ ASR_PROFILES = {
         temperature=(0.0, 0.2),
         log_prob_threshold=-1.0,
         no_speech_threshold=0.55,
-        repetition_penalty=1.10,
+        repetition_penalty=1.20,
         quality_gate=91.0,
         retry_profile_key="rescue",
         hallucination_silence_threshold=1.0,
     ),
     "smart": ASRProfile(
         label="Akıllı 90+",
-        description="Önerilen profil: turbo model, bağlam koruma ve dengeli beam ayarı.",
+        description="Önerilen profil: turbo model, tekrar engelleme ve dengeli beam ayarı.",
         use_batched=True,
         batch_size=8,
         beam_size=3,
         best_of=3,
-        condition_on_previous_text=True,
+        condition_on_previous_text=False,
         chunk_length=18,
         vad_threshold=0.35,
         min_silence_duration_ms=450,
@@ -651,7 +652,7 @@ ASR_PROFILES = {
         temperature=(0.0, 0.2),
         log_prob_threshold=-1.0,
         no_speech_threshold=0.55,
-        repetition_penalty=1.05,
+        repetition_penalty=1.20,
         hallucination_silence_threshold=1.0,
     ),
     "latency": ASRProfile(
@@ -661,7 +662,7 @@ ASR_PROFILES = {
         batch_size=12,
         beam_size=1,
         best_of=1,
-        condition_on_previous_text=True,
+        condition_on_previous_text=False,
         chunk_length=15,
         vad_threshold=0.45,
         min_silence_duration_ms=300,
@@ -669,7 +670,7 @@ ASR_PROFILES = {
         temperature=(0.0,),
         log_prob_threshold=-1.2,
         no_speech_threshold=0.65,
-        repetition_penalty=1.0,
+        repetition_penalty=1.18,
         hallucination_silence_threshold=1.5,
     ),
     "accuracy": ASRProfile(
@@ -679,7 +680,7 @@ ASR_PROFILES = {
         batch_size=1,
         beam_size=5,
         best_of=5,
-        condition_on_previous_text=True,
+        condition_on_previous_text=False,
         chunk_length=22,
         vad_threshold=0.30,
         min_silence_duration_ms=650,
@@ -687,7 +688,7 @@ ASR_PROFILES = {
         temperature=(0.0, 0.2, 0.4),
         log_prob_threshold=-1.0,
         no_speech_threshold=0.50,
-        repetition_penalty=1.08,
+        repetition_penalty=1.20,
         hallucination_silence_threshold=1.0,
     ),
     "rescue": ASRProfile(
@@ -697,7 +698,7 @@ ASR_PROFILES = {
         batch_size=1,
         beam_size=5,
         best_of=5,
-        condition_on_previous_text=True,
+        condition_on_previous_text=False,
         chunk_length=30,
         vad_threshold=0.22,
         min_silence_duration_ms=900,
@@ -705,8 +706,9 @@ ASR_PROFILES = {
         temperature=(0.0, 0.2, 0.4, 0.6),
         log_prob_threshold=-1.25,
         no_speech_threshold=0.35,
-        repetition_penalty=1.12,
+        repetition_penalty=1.20,
         quality_gate=ASR_CONFIDENCE_RETRY_THRESHOLD,
         hallucination_silence_threshold=0.8,
     ),
 }
+
