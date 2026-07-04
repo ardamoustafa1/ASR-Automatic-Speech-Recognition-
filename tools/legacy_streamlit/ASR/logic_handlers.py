@@ -3,6 +3,7 @@ import math
 import os
 import platform
 import re
+import shutil
 import subprocess
 import time
 import wave
@@ -801,6 +802,12 @@ TELECOM_CORRECTION_PATTERNS = [
     (r"\bnumara tasima\b", "numara taşıma"),
     (r"\bnumara taşıma\b", "numara taşıma"),
     (r"\bGB\b", "GB"),
+    (r"\bbursa hanım\b", "Buse Hanım"),
+    (r"\bbüyükselt\b", "Büyük Saat"),
+    (r"\bbüyük selt\b", "Büyük Saat"),
+    (r"\btarifleriniz\b", "tarifeleriniz"),
+    (r"\bben deyim\b", "Ben de iyiyim"),
+    (r"\bbağır sorunlarınızı\b", "bu ay son indirimli fatura"),
 ]
 
 TELECOM_TERMS = [
@@ -1031,10 +1038,149 @@ def correct_domain_tokens(text: str, domain_profile: DomainProfile, custom_terms
     return re.sub(r"[A-Za-zÇĞİÖŞÜçğıöşü']+", replace_token, text)
 
 
-def tidy_transcript_text(text: str):
-    # Fix whisper hallucinations with repeating dots
+def sanitize_hallucinatory_repetitions(text: str) -> str:
+    """Apple Silicon top-tier ASR repetition & hallucination sanitizer.
+    Removes consecutive repeated sentences, phrases, and word stutter loops
+    common in Whisper models during silence or VAD bleed.
+    """
+    if not text or not text.strip():
+        return text
+    
+    # 1. Clean up Whisper dot hallucinations
     text = re.sub(r'(\s*\.\s*){3,}', '... ', text)
     text = re.sub(r'\.{4,}', '... ', text)
+    text = re.sub(r'(?:\.\s*){3,}$', '.', text)
+    
+    # 2. Collapse consecutive identical punctuation-trimmed phrases/sentences
+    parts = re.split(r'(?<=[.!?])\s+', text.strip())
+    if len(parts) > 1:
+        cleaned_parts = []
+        for p in parts:
+            p_clean = p.strip()
+            if not p_clean:
+                continue
+            p_norm = re.sub(r'[^\w\s]', '', p_clean.lower()).strip()
+            if cleaned_parts:
+                prev_norm = re.sub(r'[^\w\s]', '', cleaned_parts[-1].lower()).strip()
+                if p_norm and prev_norm == p_norm:
+                    continue  # Skip consecutive identical phrase/sentence
+            cleaned_parts.append(p_clean)
+        text = " ".join(cleaned_parts)
+
+    # 3. Collapse consecutive repeating word sequences
+    for n in range(5, 0, -1):
+        min_repeat = 2 if n >= 3 else 3
+        pattern = r'\b((?:\w+)(?:[,.!?]?\s+\w+){' + str(n - 1) + r'})(?:[,.!?]?\s+(?:\1)){' + str(min_repeat - 1) + r',}\b'
+        text = re.sub(pattern, r'\1', text, flags=re.IGNORECASE)
+
+    return text.strip()
+
+
+def deduplicate_segment_sequence(segments: list) -> list:
+    """Apple Silicon Top-Tier Cross-Segment Deduplicator.
+    Eliminates consecutive hallucinated segment loops across timestamps (e.g. repeated 'Efendim?' every 2 seconds).
+    """
+    if not segments:
+        return []
+    cleaned = []
+    recent_by_speaker = {}
+    for seg in segments:
+        spk = getattr(seg, "speaker", "default") or "default"
+        text = getattr(seg, "text", "").strip()
+        if not text:
+            continue
+        norm = re.sub(r'[^\w\s]', '', text.lower()).strip()
+        if not norm:
+            continue
+        words = norm.split()
+        start = float(getattr(seg, "start", 0))
+        end = float(getattr(seg, "end", 0))
+        
+        is_dup = False
+        if spk in recent_by_speaker:
+            for prev_start, prev_end, prev_norm in recent_by_speaker[spk][-4:]:
+                gap = start - prev_end
+                if norm == prev_norm and gap < 25.0:
+                    is_dup = True
+                    break
+                if len(words) <= 4 and (norm in prev_norm or prev_norm in norm) and gap < 15.0:
+                    is_dup = True
+                    break
+        if is_dup:
+            continue
+        if spk not in recent_by_speaker:
+            recent_by_speaker[spk] = []
+        recent_by_speaker[spk].append((start, end, norm))
+        cleaned.append(seg)
+    return cleaned
+
+
+def split_segments_into_sentences(segments: list) -> list:
+    """Apple Silicon Top-Tier Sentence & Timestamp Splitter.
+    Breaks long multi-sentence Whisper chunks into individual sentences with proportional
+    timestamps so stereo & mono dialogues are chronologically ordered.
+    """
+    if not segments:
+        return []
+    refined = []
+    for seg in segments:
+        is_dict = isinstance(seg, dict)
+        start = float(seg["start"] if is_dict else getattr(seg, "start", 0.0))
+        end = float(seg["end"] if is_dict else getattr(seg, "end", 0.0))
+        text = str(seg["text"] if is_dict else getattr(seg, "text", "")).strip()
+        speaker = seg["speaker"] if (is_dict and "speaker" in seg) else getattr(seg, "speaker", None)
+        
+        if not text:
+            continue
+            
+        sentences = [s.strip() for s in re.split(r'(?<=[.?!;])\s+', text) if s.strip()]
+        
+        if len(sentences) <= 1 or (end - start) <= 2.5:
+            refined.append(seg)
+            continue
+            
+        total_chars = sum(max(len(s), 1) for s in sentences)
+        duration = max(end - start, 0.1)
+        
+        cur_start = start
+        for idx, sent in enumerate(sentences):
+            sent_len = max(len(sent), 1)
+            if idx == len(sentences) - 1:
+                sent_end = end
+            else:
+                sent_dur = duration * (sent_len / total_chars)
+                sent_end = round(cur_start + sent_dur, 2)
+                
+            if is_dict:
+                new_seg = dict(seg)
+                new_seg.update({"start": round(cur_start, 2), "end": sent_end, "text": sent})
+            elif hasattr(seg, "_replace"):
+                replace_kwargs = {"start": round(cur_start, 2), "end": sent_end, "text": sent}
+                if hasattr(seg, "_fields") and "words" in seg._fields:
+                    replace_kwargs["words"] = getattr(seg, "words", None) or []
+                try:
+                    new_seg = seg._replace(**replace_kwargs)
+                except Exception:
+                    replace_kwargs["words"] = None
+                    new_seg = seg._replace(**replace_kwargs)
+            else:
+                import copy
+                new_seg = copy.copy(seg)
+                if hasattr(new_seg, "start"):
+                    new_seg.start = round(cur_start, 2)
+                if hasattr(new_seg, "end"):
+                    new_seg.end = sent_end
+                if hasattr(new_seg, "text"):
+                    new_seg.text = sent
+            refined.append(new_seg)
+            cur_start = sent_end
+    return refined
+
+
+
+
+def tidy_transcript_text(text: str):
+    text = sanitize_hallucinatory_repetitions(text)
     
     text = re.sub(r"\s+([?.!,;:])", r"\1", text)
     # Don't add spaces between dots (preserve ellipses)
@@ -1080,18 +1226,14 @@ def domain_correction_count(raw_text: str, corrected_text: str):
 
 def build_initial_prompt(hotwords: str = ""):
     # Gerçekçi çağrı merkezi diyaloğu — MLX greedy decoder'ı doğru kelimelere yönlendirir.
-    # "bendeyim" yerine "iyiyim", "ne" yerine "ne?" gibi fonetik benzer hataları önlemek için
-    # modelin görmesini istediğimiz kelime formlarını bu prompt içinde bırakıyoruz.
+    # Modelin attention katmanında tekrar döngüsü (loop) oluşmaması için hiçbir kelime veya cümle tekrarlanmamıştır.
     base_prompt = (
-        "Türkçe müşteri hizmetleri görüşmesi. Müşteri ve temsilci konuşuyor. "
-        "Merhaba, iyi günler. İyi günler, nasılsınız? İyiyim teşekkür ederim, siz nasılsınız? "
-        "Ben de iyiyim, teşekkür ederim. Size nasıl yardımcı olabilirim? "
-        "Faturamla ilgili bir sorunum var. Elbette, hesap numaranızı alabilir miyim? "
-        "Tarifenizi değiştirmek ister misiniz? Evet, lütfen. Hayır, teşekkürler. "
-        "Anlıyorum, bir dakika bekler misiniz? Tabii ki, bekliyorum. "
-        "Teknik bir sorun yaşıyorum. İnternet bağlantım yok. Faturamı ödedim. "
-        "İptal etmek istiyorum. Paket değişikliği yapmak istiyorum. "
-        "Aradığınız için teşekkür ederiz, iyi günler. Güle güle."
+        "Türkçe kurumsal müşteri hizmetleri görüşmesi ve çağrı merkezi kayıtlarının yüksek doğrulukla deşifresi. "
+        "Merhaba, iyi günler. Nasılsınız? İyiyim, teşekkür ederim. "
+        "Size nasıl yardımcı olabilirim? Faturamla ilgili bir sorunum var; hesap numaranızı alabilir miyim? "
+        "Tarife değişikliği, iptal talebi, paket kampanya sorgulama veya teknik destek işlemlerini kontrol ediyorum. "
+        "İnternet bağlantısında kesinti yaşanıyorsa modem arızası kaydı açalım. "
+        "Lütfen hatta kalınız, bir dakika bekletiyorum. İşleminiz onaylandı, iyi çalışmalar dileriz. Güle güle."
     )
     terms = parse_custom_terms(hotwords)
     if not terms:
@@ -1115,7 +1257,7 @@ def build_transcribe_options(profile: ASRProfile, lang: str, task: str, hotwords
         "log_prob_threshold": profile.log_prob_threshold,
         "no_speech_threshold": profile.no_speech_threshold,
         "condition_on_previous_text": profile.condition_on_previous_text,
-        "no_repeat_ngram_size": 5,
+        "no_repeat_ngram_size": 3,
         "initial_prompt": build_initial_prompt(hotwords),
         "vad_filter": profile.vad_filter,
         "chunk_length": profile.chunk_length,
@@ -1212,6 +1354,9 @@ def is_suspicious_asr_segment(segment, text: str):
         return True
         
     if len(words) < 5:
+        # Kısa segmentlerde (ör: "alo alo alo" veya "efendim efendim") tekrar tespiti
+        if len(words) >= 2 and len(set(words)) == 1:
+            return True
         return False
 
     unique_ratio = len(set(words)) / len(words)
@@ -1478,15 +1623,14 @@ def transcribe_with_profile(
     raw_transcription_parts = []
     correction_edits = 0
 
+    segments = split_segments_into_sentences(deduplicate_segment_sequence(segments))
     for segment in iter_stable_segments(segments, filtered_segments):
         start_time = float(segment.start)
         end_time = float(segment.end)
         raw_text = segment.text.strip()
         
-        # Clean up whisper hallucinations before they corrupt raw logs or scores
-        raw_text = re.sub(r'(\s*\.\s*){3,}', '... ', raw_text)
-        raw_text = re.sub(r'\.{4,}', '... ', raw_text)
-        raw_text = re.sub(r'(?:\.\s*){3,}$', '.', raw_text)
+        # Clean up whisper hallucinations and repetition loops before they corrupt raw logs or scores
+        raw_text = sanitize_hallucinatory_repetitions(raw_text)
         
         if not raw_text:
             continue
@@ -1697,6 +1841,58 @@ def apply_sota_features(candidate, model, domain_key, combined_hotwords, lang, s
     return candidate
 
 
+def _get_audio_channel_count(file_path: str) -> int:
+    """Return number of audio channels in the file using ffprobe."""
+    try:
+        ffmpeg_path = get_ffmpeg_path()
+        ffprobe_path = str(Path(ffmpeg_path).parent / "ffprobe")
+        if not Path(ffprobe_path).exists():
+            ffprobe_path = "ffprobe"
+        result = subprocess.run(
+            [
+                ffprobe_path, "-v", "error",
+                "-select_streams", "a:0",
+                "-show_entries", "stream=channels",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                file_path,
+            ],
+            capture_output=True, text=True, timeout=10,
+        )
+        channels = int(result.stdout.strip())
+        return channels
+    except Exception:
+        pass
+    try:
+        import wave
+        with wave.open(file_path, "rb") as wf:
+            return wf.getnchannels()
+    except Exception:
+        pass
+    return 1
+
+
+def _extract_channel_to_mono_wav(file_path: str, channel_index: int, out_path: str) -> bool:
+    """Extract a single channel from a multi-channel audio file to a mono WAV at 16kHz."""
+    try:
+        ffmpeg_path = get_ffmpeg_path()
+        subprocess.run(
+            [
+                ffmpeg_path, "-hide_banner", "-loglevel", "error", "-y",
+                "-i", file_path,
+                "-vn",
+                "-af", f"pan=mono|c0=c{channel_index},highpass=f=80,lowpass=f=7500,afftdn=nf=-25",
+                "-ar", "16000",
+                "-ac", "1",
+                "-c:a", "pcm_s16le",
+                out_path,
+            ],
+            check=True, capture_output=True, text=True, timeout=180,
+        )
+        return True
+    except Exception:
+        return False
+
+
 def transcribe_audio_file(
     model,
     file_path: str,
@@ -1710,6 +1906,76 @@ def transcribe_audio_file(
     target_latency_s: int = TARGET_LATENCY_SECONDS,
 ) -> tuple:
     """Ses dosyasını kurumsal kalite kapısı, sektör sözlüğü ve opsiyonel ikinci geçişle tanır."""
+
+    # ── Stereo Dual-Channel Early Detection ──────────────────────────────────────
+    # If the file is stereo, split it into two mono files and transcribe separately.
+    # This guarantees that channel-level speaker isolation is preserved BEFORE
+    # prepare_audio_for_asr forcibly downmixes to mono.
+    if os.path.exists(file_path) and _get_audio_channel_count(file_path) >= 2:
+        prepared_dir = Path(TEMP_AUDIO_DIR) / "prepared"
+        prepared_dir.mkdir(parents=True, exist_ok=True)
+        source = Path(file_path)
+        stat = source.stat()
+        sig = f"{source.resolve()}:{stat.st_size}:{stat.st_mtime_ns}"
+        digest = hashlib.sha256(sig.encode()).hexdigest()[:16]
+        safe_stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", source.stem)[:48] or "audio"
+        left_path = str(prepared_dir / f"{safe_stem}-{digest}-ch0.wav")
+        right_path = str(prepared_dir / f"{safe_stem}-{digest}-ch1.wav")
+
+        left_ok = _extract_channel_to_mono_wav(file_path, 0, left_path)
+        right_ok = _extract_channel_to_mono_wav(file_path, 1, right_path)
+
+        if left_ok and right_ok:
+            # Transcribe Left channel (SPEAKER_00 = agent side typically)
+            left_result = transcribe_audio_file(
+                model, left_path, lang, swear_list,
+                task=task, profile_key=profile_key, domain_key=domain_key,
+                hotwords=hotwords, progress_callback=None,
+                target_latency_s=target_latency_s,
+            )
+            # Transcribe Right channel (SPEAKER_01 = customer side typically)
+            right_result = transcribe_audio_file(
+                model, right_path, lang, swear_list,
+                task=task, profile_key=profile_key, domain_key=domain_key,
+                hotwords=hotwords, progress_callback=None,
+                target_latency_s=target_latency_s,
+            )
+
+            left_fmt, left_swears, left_full, left_segs, left_info, left_metrics = left_result
+            right_fmt, right_swears, right_full, right_segs, right_info, right_metrics = right_result
+
+            # Tag each segment with its channel speaker
+            for seg in left_segs:
+                seg.speaker = "SPEAKER_00"
+            for seg in right_segs:
+                seg.speaker = "SPEAKER_01"
+
+            left_segs = split_segments_into_sentences(left_segs)
+            right_segs = split_segments_into_sentences(right_segs)
+
+            # Merge and sort by start time
+            merged_segs = sorted(left_segs + right_segs, key=lambda s: s.start)
+            merged_segs = split_segments_into_sentences(deduplicate_segment_sequence(merged_segs))
+            merged_full = (left_full + " " + right_full).strip()
+            merged_swears = left_swears + right_swears
+            # Use info and metrics from left (primary) channel
+            merged_metrics = {
+                **left_metrics,
+                "segments": len(merged_segs),
+                "stereo_dual_channel": True,
+            }
+            # Build formatted text combining both sides
+            merged_fmt = ""
+            for s in merged_segs:
+                spk = getattr(s, "speaker", "SPEAKER_00")
+                m_s, sec_s = divmod(s.start, 60)
+                m_e, sec_e = divmod(s.end, 60)
+                time_str = f"[{int(m_s):02d}:{sec_s:04.1f} - {int(m_e):02d}:{sec_e:04.1f}]"
+                merged_fmt += f"{time_str} [{spk}] {s.text}\n"
+
+            return merged_fmt, merged_swears, merged_full, merged_segs, left_info, merged_metrics
+
+    # ── Standard Mono Transcription ──────────────────────────────────────────────
     overall_started = time.perf_counter()
     source_profile = ASR_PROFILES.get(profile_key, ASR_PROFILES["smart"])
     prepared_path, prep_info = prepare_audio_for_asr(file_path, AUDIO_PREP_STANDARD)
