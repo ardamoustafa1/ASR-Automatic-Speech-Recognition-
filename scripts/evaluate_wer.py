@@ -41,6 +41,13 @@ def load_evaluation_dataset(dataset_path: Path) -> list[dict]:
 
 
 def run_evaluation(dataset: list[dict], audio_dir: Path | None = None) -> dict:
+    if not audio_dir or not audio_dir.exists():
+        raise ValueError(f"Valid --audio-dir is required for benchmark. Provided: {audio_dir}")
+
+    print("Loading ASRService for acoustic evaluation...")
+    from asr_pro.services.asr_service import ASRService
+    service = ASRService()
+    
     total_ref_words = 0
     total_edit_distance = 0
     total_duration_s = 0.0
@@ -51,29 +58,34 @@ def run_evaluation(dataset: list[dict], audio_dir: Path | None = None) -> dict:
     for item in dataset:
         item_id = item["id"]
         ref_text = item["reference_text"]
-        duration_s = float(item.get("duration_s", 5.0))
-        total_duration_s += duration_s
         
+        audio_file = audio_dir / f"{item_id}.wav"
+        if not audio_file.exists():
+            print(f"[WARN] Audio file missing for {item_id}, skipping. Expected: {audio_file}")
+            continue
+
+        try:
+            import wave
+            with wave.open(str(audio_file), 'r') as w:
+                frames = w.getnframes()
+                rate = w.getframerate()
+                duration_s = frames / float(rate)
+        except Exception as e:
+            print(f"[WARN] Failed to get duration for {item_id}: {e}")
+            duration_s = 5.0
+
         start_time = time.perf_counter()
         
-        # Check if physical audio file exists for live acoustic transcription
-        audio_file = audio_dir / f"{item_id}.wav" if audio_dir else None
-        if audio_file and audio_file.exists():
-            try:
-                from asr_pro.services.asr_service import ASRService
-                service = ASRService()
-                segments, _ = service.transcribe(str(audio_file), language="tr")
-                hyp_text = " ".join([s.text for s in segments])
-            except Exception as e:
-                print(f"[WARN] Failed live transcription for {item_id}: {e}. Using fallback hypothesis.")
-                hyp_text = item.get("simulated_hypothesis", ref_text)
-        else:
-            # Use benchmark hypothesis (e.g., simulating speech recognition output with realistic acoustic noise)
-            time.sleep(0.005)  # Simulate DSP tokenization & evaluation latency
-            hyp_text = item.get("simulated_hypothesis", ref_text)
+        try:
+            segments, _ = service.transcribe(str(audio_file), language="tr")
+            hyp_text = " ".join([s.text for s in segments])
+        except Exception as e:
+            print(f"[WARN] Failed transcription for {item_id}: {e}. Skipping.")
+            continue
             
         elapsed = time.perf_counter() - start_time
         total_processing_s += elapsed
+        total_duration_s += duration_s
         
         metrics = calculate_word_accuracy(ref_text, hyp_text)
         total_ref_words += metrics["reference_words"]
@@ -164,7 +176,7 @@ def generate_markdown_report(eval_data: dict, output_path: Path) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Run ASR-PRO automated WER benchmark suite.")
     parser.add_argument("--dataset", type=str, default="benchmarks/eval_dataset.json", help="Path to evaluation dataset JSON.")
-    parser.add_argument("--audio-dir", type=str, default=None, help="Optional path to directory containing live WAV files.")
+    parser.add_argument("--audio-dir", type=str, default="benchmarks/audio", help="Path to directory containing live WAV files (required for benchmarking).")
     parser.add_argument("--output-md", type=str, default="data/wer_report.md", help="Path to save markdown report.")
     parser.add_argument("--output-json", type=str, default="data/wer_report.json", help="Path to save JSON report.")
     args = parser.parse_args()

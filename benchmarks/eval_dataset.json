@@ -2,106 +2,76 @@
   {
     "id": "call_001_banking_kmh",
     "domain": "banking",
-    "reference_text": "Merhaba, kredili mevduat hesabı limitimi artırmak ve güncel faiz oranlarını öğrenmek istiyorum.",
-    "simulated_hypothesis": "Merhaba, kredili mevduat hesabı limitimi arttırmak ve güncel faiz oranlarını öğrenmek istiyorum.",
-    "duration_s": 5.4
+    "reference_text": "Merhaba, kredili mevduat hesabı limitimi artırmak ve güncel faiz oranlarını öğrenmek istiyorum."
   },
   {
     "id": "call_002_support_internet",
     "domain": "telecom",
-    "reference_text": "Dünden beri evimde internet bağlantısı sürekli kopuyor, arıza kaydı oluşturabilir misiniz?",
-    "simulated_hypothesis": "Dünden beri evimde internet bağlantısı sürekli kopuyor arıza kaydı oluşturabilir misiniz?",
-    "duration_s": 6.2
+    "reference_text": "Dünden beri evimde internet bağlantısı sürekli kopuyor, arıza kaydı oluşturabilir misiniz?"
   },
   {
     "id": "call_003_billing_dispute",
     "domain": "billing",
-    "reference_text": "Son faturamda haberim olmadan ek bir paket ücreti yansıtılmış, bu tutarın iadesini talep ediyorum.",
-    "simulated_hypothesis": "Son faturamda haberim olmadan ek bir paket ücreti yansıtılmış, bu tutarın iadesini talep ediyorum.",
-    "duration_s": 7.1
+    "reference_text": "Son faturamda haberim olmadan ek bir paket ücreti yansıtılmış, bu tutarın iadesini talep ediyorum."
   },
   {
     "id": "call_004_card_stolen",
     "domain": "banking",
-    "reference_text": "Kredi kartımı kaybettim, hemen kartımın iptal edilmesini ve yeni kart basılmasını istiyorum.",
-    "simulated_hypothesis": "Kredi kartımı kaybettim hemen kartımın iptal edilmesini ve yeni kart basılmasını istiyorum.",
-    "duration_s": 5.8
+    "reference_text": "Kredi kartımı kaybettim, hemen kartımın iptal edilmesini ve yeni kart basılmasını istiyorum."
   },
   {
     "id": "call_005_insurance_claim",
     "domain": "insurance",
-    "reference_text": "Aracımla küçük bir kaza geçirdim, kasko hasar dosyası açtırmak için hangi belgeler gerekiyor?",
-    "simulated_hypothesis": "Aracımla küçük bir kaza geçirdim kasko hasar dosyası açtırmak için hangi belgeler gerekiyor?",
-    "duration_s": 6.9
+    "reference_text": "Aracımla küçük bir kaza geçirdim, kasko hasar dosyası açtırmak için hangi belgeler gerekiyor?"
   },
   {
     "id": "call_006_cargo_tracking",
     "domain": "logistics",
-    "reference_text": "Sipariş verdiğim kargom üç gündür transfer merkezinde hareketsiz bekliyor, bilgi alabilir miyim?",
-    "simulated_hypothesis": "Sipariş verdiğim kargom üç gündür transfer merkezinde hareketsiz bekliyor bilgi alabilir miyim?",
-    "duration_s": 6.5
+    "reference_text": "Sipariş verdiğim kargom üç gündür transfer merkezinde hareketsiz bekliyor, bilgi alabilir miyim?"
   },
   {
     "id": "call_007_flight_change",
     "domain": "travel",
-    "reference_text": "Yarın sabahki İstanbul Ankara uçuşumu akşam saatine ertelemek istiyorum, ceza ödeyecek miyim?",
-    "simulated_hypothesis": "Yarın sabahki İstanbul Ankara uçuşumu akşam saatine ertelemek istiyorum ceza ödeyecek miyim?",
-    "duration_s": 7.3
+    "reference_text": "Yarın sabahki İstanbul Ankara uçuşumu akşam saatine ertelemek istiyorum, ceza ödeyecek miyim?"
   },
   {
     "id": "call_008_technical_modem",
     "domain": "telecom",
-    "reference_text": "Modemimdeki kırmızı ışık yanıp sönüyor, müşteri hizmetleri yönlendirmesiyle reset attım ama düzelmedi.",
-    "simulated_hypothesis": "Modemimdeki kırmızı ışık yanıp sönüyor müşteri hizmetleri yönlendirmesiyle reset attım ama düzelmedi.",
-    "duration_s": 8.0
+    "reference_text": "Modemimdeki kırmızı ışık yanıp sönüyor, müşteri hizmetleri yönlendirmesiyle reset attım ama düzelmedi."
   },
   {
     "id": "call_009_hospital_randevu",
     "domain": "healthcare",
-    "reference_text": "Kardiyoloji bölümünden önümüzdeki hafta içi sabah saatlerine bir muayene randevusu almak istiyorum.",
-    "simulated_hypothesis": "Kardiyoloji bölümünden önümüzdeki hafta içi sabah saatlerine bir muayene randevusu almak istiyorum.",
-    "duration_s": 6.1
+    "reference_text": "Kardiyoloji bölümünden önümüzdeki hafta içi sabah saatlerine bir muayene randevusu almak istiyorum."
   },
   {
     "id": "call_010_e_commerce_refund",
     "domain": "retail",
-    "reference_text": "Aldığım ayakkabı küçük geldi, değişim yerine doğrudan ücret iadesi yapılmasını talep ediyorum.",
-    "simulated_hypothesis": "Aldığım ayakkabı küçük geldi değişim yerine doğrudan ücret iadesi yapılmasını talep ediyorum.",
-    "duration_s": 6.7
+    "reference_text": "Aldığım ayakkabı küçük geldi, değişim yerine doğrudan ücret iadesi yapılmasını talep ediyorum."
   },
   {
     "id": "call_011_pension_inquiry",
     "domain": "finance",
-    "reference_text": "Bireysel emeklilik hesabmdaki devlet katkısı tutarını ve mevcut fon dağılımını nasıl değiştirebilirim?",
-    "simulated_hypothesis": "Bireysel emeklilik hesabındaki devlet katkısı tutarını ve mevcut fon dağılımını nasıl değiştirebilirim?",
-    "duration_s": 7.5
+    "reference_text": "Bireysel emeklilik hesabmdaki devlet katkısı tutarını ve mevcut fon dağılımını nasıl değiştirebilirim?"
   },
   {
     "id": "call_012_utility_gas",
     "domain": "utilities",
-    "reference_text": "Doğalgaz sayacımda gaz kokusu hissettim, acil arıza ekibinin adresime yönlendirilmesini rica ediyorum.",
-    "simulated_hypothesis": "Doğalgaz sayacımda gaz kokusu hissettim acil arıza ekibinin adresime yönlendirilmesini rica ediyorum.",
-    "duration_s": 7.0
+    "reference_text": "Doğalgaz sayacımda gaz kokusu hissettim, acil arıza ekibinin adresime yönlendirilmesini rica ediyorum."
   },
   {
     "id": "call_013_hotel_booking",
     "domain": "travel",
-    "reference_text": "Antalya otel rezervasyonumuza ek olarak havalimanı transfer hizmeti de ekletmek istiyoruz.",
-    "simulated_hypothesis": "Antalya otel rezervasyonumuza ek olarak havalimanı transfer hizmeti de ekletmek istiyoruz.",
-    "duration_s": 6.3
+    "reference_text": "Antalya otel rezervasyonumuza ek olarak havalimanı transfer hizmeti de ekletmek istiyoruz."
   },
   {
     "id": "call_014_software_support",
     "domain": "tech",
-    "reference_text": "Kurumsal lisans anahtarımızı sunucuya girerken doğrulama hatası alıyoruz, teknik destek sağlayabilir misiniz?",
-    "simulated_hypothesis": "Kurumsal lisans anahtarımızı sunucuya girerken doğrulama hatası alıyoruz teknik destek sağlayabilir misiniz?",
-    "duration_s": 8.2
+    "reference_text": "Kurumsal lisans anahtarımızı sunucuya girerken doğrulama hatası alıyoruz, teknik destek sağlayabilir misiniz?"
   },
   {
     "id": "call_015_tax_consultancy",
     "domain": "finance",
-    "reference_text": "Şirketimizin beyanname son ödeme tarihleri ve yapılandırma taksitleri hakkında detaylı bilgi almak istiyoruz.",
-    "simulated_hypothesis": "Şirketimizin beyanname son ödeme tarihleri ve yapılandırma taksitleri hakkında detaylı bilgi almak istiyoruz.",
-    "duration_s": 7.8
+    "reference_text": "Şirketimizin beyanname son ödeme tarihleri ve yapılandırma taksitleri hakkında detaylı bilgi almak istiyoruz."
   }
 ]
