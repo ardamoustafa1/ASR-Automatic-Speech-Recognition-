@@ -80,11 +80,13 @@ class ASRService:
                 self._compute_type = "float16"
                 self._model_size = model_size
                 self._is_mlx = True
-                logger.info(f"Loading ASR model '{model_size}' via Apple MLX (God-Tier Mode)")
+                logger.info(
+                    f"Initialized ASR model '{model_size}' using hardware-accelerated Apple MLX engine."
+                )
                 return None  # MLX handles loading during transcribe
             except ImportError:
                 logger.warning(
-                    "mlx-whisper not found. Falling back to faster-whisper CPU/int8. For God-Tier performance on Mac, run: pip install mlx-whisper"
+                    "mlx-whisper module not detected. Falling back to CPU int8 execution. For optimal Apple Silicon performance, install mlx-whisper."
                 )
                 self._is_mlx = False
         else:
