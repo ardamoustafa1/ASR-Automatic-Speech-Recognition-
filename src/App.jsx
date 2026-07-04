@@ -25,7 +25,6 @@ import { api } from "./api/client";
 import { useAppStore } from "./store/useAppStore";
 import "./styles.css";
 
-// Move AnalyzePage inside pages later if needed, kept here for brevity based on existing code
 import { Play, FileAudio } from "lucide-react";
 import { useState } from "react";
 import { SkeletonList } from "./components/common/Skeleton";
@@ -144,13 +143,17 @@ function App() {
   const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
-    api.me().then(() => {
-      setIsAuthenticated(true);
-    }).catch(() => {
-      setIsAuthenticated(false);
-    }).finally(() => {
-      setIsInitializing(false);
-    });
+    api
+      .me()
+      .then(() => {
+        setIsAuthenticated(true);
+      })
+      .catch(() => {
+        setIsAuthenticated(false);
+      })
+      .finally(() => {
+        setIsInitializing(false);
+      });
   }, [setIsAuthenticated]);
 
   useEffect(() => {
@@ -174,7 +177,12 @@ function App() {
     }
   };
 
-  if (isInitializing) return <div className="app-container"><div className="page-loading">Oturum kontrol ediliyor...</div></div>;
+  if (isInitializing)
+    return (
+      <div className="app-container">
+        <div className="page-loading">Oturum kontrol ediliyor...</div>
+      </div>
+    );
 
   if (!isAuthenticated) {
     return (
