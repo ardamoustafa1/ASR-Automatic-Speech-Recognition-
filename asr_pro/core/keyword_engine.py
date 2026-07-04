@@ -1,3 +1,4 @@
+# Identifies targeted business keywords and competitor mentions during calls.
 from __future__ import annotations
 
 """Keyword & topic detection engine — generalized from ASR swear detection."""
