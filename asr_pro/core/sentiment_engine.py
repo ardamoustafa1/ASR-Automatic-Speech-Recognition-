@@ -1,3 +1,4 @@
+# Evaluates customer and agent emotional valence and sentiment trajectories over time.
 from __future__ import annotations
 
 """Advanced AI-Based Sentiment & Emotion Analysis Engine using Transformers."""
