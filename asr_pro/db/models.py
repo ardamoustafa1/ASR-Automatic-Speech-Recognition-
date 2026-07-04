@@ -1,3 +1,4 @@
+# SQLAlchemy and SQLModel database schemas for conversations, users, and analytics metrics.
 from __future__ import annotations
 
 import uuid
