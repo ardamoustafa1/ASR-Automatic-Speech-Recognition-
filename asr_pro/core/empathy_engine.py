@@ -1,3 +1,4 @@
+# Quantifies agent empathy and active listening skills during customer support interactions.
 from __future__ import annotations
 
 """Absolute Zero-Error Deep AI Empathy & Soft Skill Engine."""
