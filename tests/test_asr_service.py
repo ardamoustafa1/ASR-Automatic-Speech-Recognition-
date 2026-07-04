@@ -42,8 +42,14 @@ def test_transcribe(mock_whisper):
     svc = ASRService()
     svc._model = mock_model
     svc._is_mlx = False
-
     segments, duration = svc.transcribe("fake_path.wav")
     assert len(segments) == 1
     assert segments[0].text == "hello world"
     assert duration == 1.0
+
+
+def test_sanitize_text():
+    assert ASRService._sanitize_text("Efendim? Efendim?") == "Efendim?"
+    assert ASRService._sanitize_text("evet evet evet") == "evet"
+    assert ASRService._sanitize_text("normal cümle burada.") == "normal cümle burada."
+
