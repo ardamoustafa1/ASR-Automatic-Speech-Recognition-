@@ -1,3 +1,4 @@
+# Triggers real-time notifications for supervisors when critical call thresholds are breached.
 from __future__ import annotations
 
 """Alert evaluation and dispatch."""
