@@ -1,7 +1,0 @@
-{
-  "dataset_hash": "e0507f8e",
-  "metrics": {
-    "full_nlp_pipeline_sec": 0.005,
-    "total_benchmark_time_sec": 0.005
-  }
-}
