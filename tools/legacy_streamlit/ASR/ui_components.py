@@ -324,7 +324,36 @@ def render_reference_gate_hint(reference_text):
         )
 
 
+def get_speaker_badge_html(segment):
+    spk = getattr(segment, "speaker", None) or getattr(segment, "speaker_label", None)
+    if not spk:
+        return ""
+    agent_id = st.session_state.get("agent_id", "SPEAKER_00")
+    customer_id = st.session_state.get("customer_id", "SPEAKER_01")
+    if spk == agent_id or spk == "Temsilci" or "agent" in str(spk).lower():
+        return f'<span class="speaker-tag speaker-agent">👤 Temsilci ({spk})</span>'
+    elif spk == customer_id or spk == "Müşteri" or "customer" in str(spk).lower():
+        return f'<span class="speaker-tag speaker-customer">🎧 Müşteri ({spk})</span>'
+    else:
+        return f'<span class="speaker-tag" style="background:rgba(255,255,255,0.1);color:#ccc;">🗣️ {spk}</span>'
+
+
 def render_search_and_transcript(segments_data):
+    has_speakers = any(getattr(seg, "speaker", None) for seg in segments_data)
+    if has_speakers:
+        agent_id = st.session_state.get("agent_id", "SPEAKER_00")
+        cust_id = st.session_state.get("customer_id", "SPEAKER_01")
+        st.markdown(
+            f"""
+            <div style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                <b>👥 Konuşmacı Ayrımı Aktif:</b> 
+                <span class="speaker-tag speaker-agent" style="margin-left: 8px;">👤 Temsilci ({agent_id})</span> 
+                <span class="speaker-tag speaker-customer" style="margin-left: 8px;">🎧 Müşteri ({cust_id})</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
     st.markdown("#### Ses İçi Arama")
     search_query = st.text_input(
         "Ses kaydı içinde kelime ara...", placeholder="Örn: bütçe, toplantı, rakam..."
@@ -344,10 +373,12 @@ def render_search_and_transcript(segments_data):
                 highlighted_text = pattern.sub(
                     lambda m: f'<span class="search-highlight">{m.group(0)}</span>', text_content
                 )
+                badge_html = get_speaker_badge_html(segment)
                 search_html += f"""
-                <div class="transcript-row">
+                <div class="transcript-row" style="display: flex; align-items: baseline; gap: 10px;">
                     <div class="transcript-time">{time_fmt}</div>
-                    <div class="transcript-text">...{highlighted_text}...</div>
+                    <div>{badge_html}</div>
+                    <div class="transcript-text" style="flex: 1;">...{highlighted_text}...</div>
                 </div>"""
         search_html += "</div>"
 
@@ -358,7 +389,7 @@ def render_search_and_transcript(segments_data):
             st.caption(f"Toplam {found_count} eşleşme bulundu.")
 
     st.markdown("---")
-    st.markdown("#### Deşifre Çıktısı")
+    st.markdown("#### Deşifre Çıktısı (Konuşmacı Bazlı)")
 
     html_output = '<div class="transcript-container">'
     for segment in segments_data:
@@ -373,10 +404,16 @@ def render_search_and_transcript(segments_data):
                 lambda m: f'<span class="search-highlight">{m.group(0)}</span>', text_content
             )
 
+        keyword_res = st.session_state.get("last_single_result", {}).get("keyword_result", None)
+        if keyword_res and keyword_res.get("hits") and KEYWORD_DETECTION_ENABLED:
+            text_content = highlight_transcript_html(text_content, keyword_res["hits"])
+
+        badge_html = get_speaker_badge_html(segment)
         html_output += f"""
-        <div class="transcript-row">
+        <div class="transcript-row" style="display: flex; align-items: baseline; gap: 10px;">
             <div class="transcript-time">{time_formatted}</div>
-            <div class="transcript-text">{text_content}</div>
+            <div>{badge_html}</div>
+            <div class="transcript-text" style="flex: 1;">{text_content}</div>
         </div>"""
     html_output += "</div>"
 
@@ -501,6 +538,11 @@ def render_raw_asr_panel(raw_transcription: str, key_prefix: str = "raw_asr"):
 def render_cached_analysis_result(result, reference_text, target_latency_s, enable_wordcloud):
     display_detection_results(result["detected_swears"], st.empty())
     render_metric_summary(result["run_metrics"], target_latency_s)
+    if "agent_id" in result:
+        st.session_state["agent_id"] = result["agent_id"]
+    if "customer_id" in result:
+        st.session_state["customer_id"] = result["customer_id"]
+    render_search_and_transcript(result["segments_data"])
     render_reference_gate_hint(reference_text)
     render_wer_summary(reference_text, result["full_transcription"])
     raw_transcription = result["run_metrics"].get("raw_transcription", "")
@@ -522,8 +564,6 @@ def render_cached_analysis_result(result, reference_text, target_latency_s, enab
         st.markdown("##### Vurgulu Deşifre Metni")
         highlighted_text = highlight_transcript_html(result["full_transcription"], hits)
         st.markdown(f'<div class="transcript-container"><div class="transcript-text">{highlighted_text}</div></div>', unsafe_allow_html=True)
-
-    render_search_and_transcript(result["segments_data"])
     render_download_buttons(
         result["uploaded_name"],
         result["formatted_text"],
@@ -1384,6 +1424,36 @@ def render_app():
 
                                 render_metric_summary(run_metrics, target_latency_s)
 
+                                # --- KONUŞMACI AYRIMI & ROL TESPİTİ ---
+                                st.markdown("---")
+                                with st.spinner("Konuşmacı ayrımı (Diarization) ve Temsilci/Müşteri rol analizi yapılıyor..."):
+                                    try:
+                                        from asr_pro.services.diarization_service import DiarizationService
+                                        diarizer = DiarizationService.get_instance()
+                                        token_to_use = (
+                                            hf_token
+                                            or os.environ.get("HF_TOKEN")
+                                            or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+                                            or os.environ.get("ASR_HF_TOKEN", "")
+                                        )
+                                        if token_to_use:
+                                            os.environ["HF_TOKEN"] = token_to_use
+                                            try:
+                                                from asr_pro.core.config import settings
+                                                settings.hf_token = token_to_use
+                                            except Exception:
+                                                pass
+                                        aligned_segments, agent_id, cust_id = diarizer.assign_speakers_to_segments(segments_data, audio_path)
+                                        if aligned_segments:
+                                            segments_data = aligned_segments
+                                            st.session_state["agent_id"] = agent_id or "SPEAKER_00"
+                                            st.session_state["customer_id"] = cust_id or "SPEAKER_01"
+                                    except Exception as e:
+                                        st.warning(f"Konuşmacı ayrımı uyarısı: {e}")
+
+                                # --- ARAMA & TRANSKRİPSİYON GÖRÜNÜMÜ ---
+                                render_search_and_transcript(segments_data)
+
                                 # --- AI CHURN & COMPLIANCE ANALYTICS ---
                                 if KEYWORD_DETECTION_ENABLED:
                                     segment_inputs = [
@@ -1391,6 +1461,7 @@ def render_app():
                                             start=seg.start,
                                             end=seg.end,
                                             text=seg.text,
+                                            speaker=getattr(seg, "speaker", None),
                                             segment_index=i,
                                         )
                                         for i, seg in enumerate(segments_data)
@@ -1681,6 +1752,8 @@ def render_app():
                                     "run_metrics": run_metrics,
                                     "toxicity_label": toxicity_label,
                                     "negative_score": negative_score,
+                                    "agent_id": st.session_state.get("agent_id", "SPEAKER_00"),
+                                    "customer_id": st.session_state.get("customer_id", "SPEAKER_01"),
                                 }
 
                                 # --- ANAHTAR KELİME & KONU TESPİTİ ---
@@ -1740,28 +1813,6 @@ def render_app():
                                     elif keyword_result and keyword_result.get("error"):
                                         st.info(f"Anahtar kelime modülü: {keyword_result['error']}")
 
-                                # --- DIARIZATION (OTOMATİK / BETA) ---
-                                diarization_result = None
-                                effective_token = (
-                                    hf_token
-                                    or os.environ.get("HF_TOKEN")
-                                    or os.environ.get("HUGGING_FACE_HUB_TOKEN")
-                                    or os.environ.get("ASR_HF_TOKEN", "")
-                                )
-                                if effective_token:
-                                    with st.spinner("Konuşmacı ayrımı (Diarization) yapılıyor..."):
-                                        diarization_result = diarize_audio(audio_path, effective_token)
-                                        if isinstance(diarization_result, str) and (
-                                            "Hatası" in diarization_result
-                                            or "Eksik" in diarization_result
-                                        ):  # Hata döndü
-                                            st.warning(f"Diarization Hatası: {diarization_result}")
-                                        else:
-                                            st.success("Konuşmacı ayrımı (Temsilci/Müşteri) otomatik tamamlandı.")
-                                            with st.expander(
-                                                "Konuşmacı Ayrımı (A/B) Sonuçları", expanded=True
-                                            ):
-                                                st.text(diarization_result)
 
                                 # --- OTOMATİK ÖZETLEME (CRM AUTO-NOTE) ---
                                 if enable_autonote:
@@ -1821,71 +1872,6 @@ def render_app():
                                         if wc_fig:
                                             st.pyplot(wc_fig)
 
-                                # --- ARAMA MOTORU (YENİ) ---
-                                st.markdown("#### Ses İçi Arama")
-                                search_query = st.text_input(
-                                    "Ses kaydı içinde kelime ara...",
-                                    placeholder="Örn: bütçe, toplantı, rakam...",
-                                )
-
-                                if search_query:
-                                    found_count = 0
-                                    st.write(f"**'{search_query}' için sonuçlar:**")
-                                    for segment in segments_data:
-                                        if search_query.lower() in segment.text.lower():
-                                            found_count += 1
-                                            # Zamanı formatla
-                                            m, s = divmod(segment.start, 60)
-                                            time_fmt = f"{int(m):02d}:{s:04.1f}"
-                                            st.markdown(
-                                                f"**{time_fmt}**: ...{segment.text.strip()}..."
-                                            )
-
-                                    if found_count == 0:
-                                        st.info("Kelime bulunamadı.")
-                                    else:
-                                        st.caption(f"Toplam {found_count} eşleşme bulundu.")
-
-                                st.markdown("---")
-
-                                # --- TRANSKRİPSİYON GÖRÜNÜMÜ ---
-                                st.markdown("#### Deşifre Çıktısı")
-
-                                html_output = '<div class="transcript-container">'
-                                for segment in segments_data:
-                                    m, s = divmod(segment.start, 60)
-                                    time_formatted = f"{int(m):02d}:{s:04.1f}"
-                                    text_content = html.escape(segment.text.strip())
-
-                                    # Apply search highlight if there is an active search
-                                    if (
-                                        search_query
-                                        and search_query.lower() in segment.text.lower()
-                                    ):
-                                        pattern = re.compile(
-                                            re.escape(search_query), re.IGNORECASE
-                                        )
-                                        text_content = pattern.sub(
-                                            lambda m: f'<span class="search-highlight">{m.group(0)}</span>',
-                                            text_content,
-                                        )
-                                        
-                                    # Apply keyword engine highlights
-                                    if (
-                                        keyword_result
-                                        and keyword_result.get("hits")
-                                        and KEYWORD_DETECTION_ENABLED
-                                    ):
-                                        text_content = highlight_transcript_html(text_content, keyword_result["hits"])
-
-                                    html_output += f"""
-                                    <div class="transcript-row">
-                                        <div class="transcript-time">{time_formatted}</div>
-                                        <div class="transcript-text">{text_content}</div>
-                                    </div>"""
-                                html_output += "</div>"
-
-                                st.markdown(html_output, unsafe_allow_html=True)
 
                                 # --- İNDİRME SEÇENEKLERİ ---
                                 col_d1, col_d2, col_d3 = st.columns(3)
