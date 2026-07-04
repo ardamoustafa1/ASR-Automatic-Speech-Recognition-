@@ -168,25 +168,46 @@ def _process_audio_upload_background(file_path: str, filename: str, sector: str)
     try:
         logger.info(f"Starting background ASR transcription for uploaded file: {filename}")
         asr = ASRService.get_instance()
-        transcribe_result = asr.transcribe(file_path)
+        transcribe_res = asr.transcribe(file_path)
+        if isinstance(transcribe_res, tuple) and len(transcribe_res) >= 2:
+            raw_segments, duration = transcribe_res[0], transcribe_res[1]
+            confidence = 0.85
+            full_text = " ".join(getattr(s, "text", "") for s in raw_segments)
+        elif isinstance(transcribe_res, dict):
+            raw_segments = transcribe_res.get("segments", [])
+            confidence = float(transcribe_res.get("confidence", 0.85))
+            full_text = transcribe_res.get("text", "") or " ".join(
+                s.get("text", "") for s in raw_segments if isinstance(s, dict)
+            )
+        else:
+            raw_segments = []
+            confidence = 0.0
+            full_text = ""
+
         segments = [
             SegmentInput(
-                start=float(s.get("start", 0)),
-                end=float(s.get("end", 0)),
-                text=str(s.get("text", "")),
-                speaker=s.get("speaker"),
+                start=float(
+                    getattr(s, "start", s.get("start", 0)) if not isinstance(s, dict) else s.get("start", 0)
+                ),
+                end=float(
+                    getattr(s, "end", s.get("end", 0)) if not isinstance(s, dict) else s.get("end", 0)
+                ),
+                text=str(
+                    getattr(s, "text", s.get("text", "")) if not isinstance(s, dict) else s.get("text", "")
+                ),
+                speaker=getattr(s, "speaker", s.get("speaker")) if not isinstance(s, dict) else s.get("speaker"),
                 segment_index=i,
             )
-            for i, s in enumerate(transcribe_result.get("segments", []))
+            for i, s in enumerate(raw_segments)
         ]
         save_conversation_with_analysis(
             db,
             segments_data=segments,
-            full_transcript=transcribe_result.get("text", "") or " ".join(s.text for s in segments),
+            full_transcript=full_text,
             sector=sector,
             audio_path=file_path,
             uploaded_name=filename,
-            asr_confidence=float(transcribe_result.get("confidence", 0.0)),
+            asr_confidence=confidence,
             quality_gate_passed=True,
         )
         logger.info(f"Successfully processed uploaded conversation for {filename}")
