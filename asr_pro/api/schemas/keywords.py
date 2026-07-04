@@ -1,3 +1,4 @@
+# Pydantic schemas for keyword detection configuration and hit reporting.
 from typing import Literal, Optional
 
 from pydantic import BaseModel
