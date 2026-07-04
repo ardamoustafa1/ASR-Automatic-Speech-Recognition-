@@ -1280,8 +1280,9 @@ def build_transcribe_options(profile: ASRProfile, lang: str, task: str, hotwords
         options["hallucination_silence_threshold"] = profile.hallucination_silence_threshold
     if profile.vad_filter:
         options["vad_parameters"] = {
-            "threshold": profile.vad_threshold,
-            "min_silence_duration_ms": profile.min_silence_duration_ms,
+            "threshold": max(getattr(profile, "vad_threshold", 0.5), 0.5),
+            "min_speech_duration_ms": 250,
+            "min_silence_duration_ms": max(getattr(profile, "min_silence_duration_ms", 500), 500),
             "speech_pad_ms": profile.speech_pad_ms,
         }
     return options
@@ -2356,8 +2357,9 @@ def redecode_low_confidence_segments(
                 else None,
                 "vad_filter": True,
                 "vad_parameters": {
-                    "threshold": 0.15,
-                    "min_silence_duration_ms": 300,
+                    "threshold": 0.5,
+                    "min_speech_duration_ms": 250,
+                    "min_silence_duration_ms": 500,
                     "speech_pad_ms": 200,
                 },
                 "word_timestamps": False,

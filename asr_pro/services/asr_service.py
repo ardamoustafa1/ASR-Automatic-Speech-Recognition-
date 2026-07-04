@@ -323,9 +323,13 @@ class ASRService:
             condition_on_previous_text=False,
             repetition_penalty=1.20,
             no_repeat_ngram_size=3,
-            compression_ratio_threshold=1.8,
             vad_filter=True,
-            vad_parameters={"min_silence_duration_ms": 500, "speech_pad_ms": 200},
+            vad_parameters={
+                "threshold": 0.5,
+                "min_speech_duration_ms": 250,
+                "min_silence_duration_ms": 500,
+                "speech_pad_ms": 200,
+            },
         )
 
         segments = []
