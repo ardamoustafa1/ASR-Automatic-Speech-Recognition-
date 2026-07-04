@@ -15,6 +15,7 @@ try:
         levenshtein_distance,
         normalize_for_wer,
         resolve_mlx_repo_name,
+        sanitize_hallucinatory_repetitions,
     )
 except ImportError as e:
     pytest.skip(
@@ -91,3 +92,14 @@ def test_calculate_word_accuracy():
 def test_resolve_mlx_repo_name():
     assert resolve_mlx_repo_name("large-v3-turbo") == "mlx-community/whisper-large-v3-turbo"
     assert resolve_mlx_repo_name("mlx-community/custom-model") == "mlx-community/custom-model"
+
+
+def test_sanitize_hallucinatory_repetitions():
+    # Test consecutive identical sentences
+    assert sanitize_hallucinatory_repetitions("Efendim? Efendim? İyi günler. İyi günler.") == "Efendim? İyi günler."
+    # Test word stutter loops
+    assert sanitize_hallucinatory_repetitions("alo alo alo") == "alo"
+    assert sanitize_hallucinatory_repetitions("bursa hanım bursa hanım bursa hanım") == "bursa hanım"
+    # Normal text should remain untouched
+    assert sanitize_hallucinatory_repetitions("Merhaba, nasılsınız? Ben iyiyim.") == "Merhaba, nasılsınız? Ben iyiyim."
+
