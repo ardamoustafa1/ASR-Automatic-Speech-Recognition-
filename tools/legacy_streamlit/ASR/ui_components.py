@@ -1279,7 +1279,8 @@ def render_app():
 
                 audio_path = None
                 if uploaded_file is not None:
-                    audio_path = os.path.join(TEMP_AUDIO_DIR, uploaded_file.name)
+                    safe_filename = os.path.basename(uploaded_file.name)
+                    audio_path = os.path.join(TEMP_AUDIO_DIR, safe_filename)
                     with open(audio_path, "wb") as f:
                         f.write(uploaded_file.getbuffer())
 
@@ -2040,7 +2041,8 @@ def render_app():
             audio_files = []
             if uploaded_batch:
                 for uf in uploaded_batch:
-                    file_path = os.path.join(BATCH_DIR, uf.name)
+                    safe_uf_name = os.path.basename(uf.name)
+                    file_path = os.path.join(BATCH_DIR, safe_uf_name)
                     with open(file_path, "wb") as f:
                         f.write(uf.getbuffer())
 
@@ -2181,7 +2183,8 @@ def render_app():
                             model_size, st.session_state.get("hardware_engine", "Windows")
                         )
                         for uf in uploaded_trend:
-                            file_path = os.path.join(TEMP_AUDIO_DIR, uf.name)
+                            safe_uf_name = os.path.basename(uf.name)
+                            file_path = os.path.join(TEMP_AUDIO_DIR, safe_uf_name)
                             with open(file_path, "wb") as f:
                                 f.write(uf.getbuffer())
 

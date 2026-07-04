@@ -97,12 +97,20 @@ def test_resolve_mlx_repo_name():
 
 def test_sanitize_hallucinatory_repetitions():
     # Test consecutive identical sentences
-    assert sanitize_hallucinatory_repetitions("Efendim? Efendim? İyi günler. İyi günler.") == "Efendim? İyi günler."
+    assert (
+        sanitize_hallucinatory_repetitions("Efendim? Efendim? İyi günler. İyi günler.")
+        == "Efendim? İyi günler."
+    )
     # Test word stutter loops
     assert sanitize_hallucinatory_repetitions("alo alo alo") == "alo"
-    assert sanitize_hallucinatory_repetitions("bursa hanım bursa hanım bursa hanım") == "bursa hanım"
+    assert (
+        sanitize_hallucinatory_repetitions("bursa hanım bursa hanım bursa hanım") == "bursa hanım"
+    )
     # Normal text should remain untouched
-    assert sanitize_hallucinatory_repetitions("Merhaba, nasılsınız? Ben iyiyim.") == "Merhaba, nasılsınız? Ben iyiyim."
+    assert (
+        sanitize_hallucinatory_repetitions("Merhaba, nasılsınız? Ben iyiyim.")
+        == "Merhaba, nasılsınız? Ben iyiyim."
+    )
     # Test known Whisper subtitle hallucinations
     assert sanitize_hallucinatory_repetitions("Altyazı M.K.") == ""
     assert sanitize_hallucinatory_repetitions("izlediğiniz için teşekkürler.") == ""
@@ -110,17 +118,22 @@ def test_sanitize_hallucinatory_repetitions():
 
 def test_is_suspicious_asr_segment():
     from collections import namedtuple
+
     Seg = namedtuple("Seg", ["avg_logprob", "no_speech_prob", "compression_ratio", "start", "end"])
     # High no_speech_prob (>0.6) should be flagged
     assert is_suspicious_asr_segment(Seg(-0.3, 0.65, 1.2, 0, 5), "Merhaba dünya") is True
     # Low confidence (< -0.8) with high compression ratio should be flagged
     assert is_suspicious_asr_segment(Seg(-0.85, 0.2, 1.9, 0, 5), "ah ah") is True
     # Normal high-confidence segment should pass
-    assert is_suspicious_asr_segment(Seg(-0.2, 0.1, 1.2, 0, 5), "Sistem gayet başarılı çalışıyor.") is False
+    assert (
+        is_suspicious_asr_segment(Seg(-0.2, 0.1, 1.2, 0, 5), "Sistem gayet başarılı çalışıyor.")
+        is False
+    )
 
 
 def test_audio_prep_filters():
     from config import AUDIO_PREP_FILTERS, AUDIO_PREP_STANDARD
+
     label, filter_str = AUDIO_PREP_FILTERS[AUDIO_PREP_STANDARD]
     assert "highpass=" in filter_str
     assert "lowpass=f=8000" in filter_str
@@ -131,12 +144,15 @@ def test_audio_prep_filters():
 def test_wer_benchmark_pipeline():
     import sys
     from pathlib import Path
+
     root = Path(__file__).resolve().parent.parent
     scripts_dir = str(root / "scripts")
     if scripts_dir not in sys.path:
         sys.path.insert(0, scripts_dir)
     import evaluate_wer
+
     dataset = evaluate_wer.load_evaluation_dataset(root / "benchmarks" / "eval_dataset.json")
-    results = evaluate_wer.run_evaluation(dataset)
+    audio_dir = root / "benchmarks" / "audio"
+    results = evaluate_wer.run_evaluation(dataset, audio_dir=audio_dir)
     assert results["summary"]["overall_wer_percent"] < 5.0
     assert results["summary"]["overall_accuracy_percent"] >= 95.0

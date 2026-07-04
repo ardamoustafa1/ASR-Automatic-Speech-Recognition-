@@ -27,15 +27,7 @@ class TranscriptionSegment:
     speaker: Optional[str] = None
 
 
-def lock_language(lang: Any) -> str:
-    """Locks ASR language to Turkish ('tr') when auto-detection or empty language is passed.
-
-    Prevents Whisper from switching languages mid-audio when encountering English
-    brand names (e.g., YouTube, WhatsApp, Netflix).
-    """
-    if not lang or str(lang).strip().lower() in ("auto", "otomatik", "auto-detect", "detect", "default", "none", "null", ""):
-        return "tr"
-    return str(lang).strip().lower()
+from asr_pro.utils.lang_utils import lock_language
 
 
 class ASRService:
@@ -150,27 +142,33 @@ class ASRService:
         """Sanitize Whisper hallucinations and phrase repetition loops."""
         if not text or not text.strip():
             return text
-        text = re.sub(r'(\s*\.\s*){3,}', '... ', text)
-        text = re.sub(r'\.{4,}', '... ', text)
-        text = re.sub(r'(?:\.\s*){3,}$', '.', text)
-        parts = re.split(r'(?<=[.!?])\s+', text.strip())
+        text = re.sub(r"(\s*\.\s*){3,}", "... ", text)
+        text = re.sub(r"\.{4,}", "... ", text)
+        text = re.sub(r"(?:\.\s*){3,}$", ".", text)
+        parts = re.split(r"(?<=[.!?])\s+", text.strip())
         if len(parts) > 1:
             cleaned_parts = []
             for p in parts:
                 p_clean = p.strip()
                 if not p_clean:
                     continue
-                p_norm = re.sub(r'[^\w\s]', '', p_clean.lower()).strip()
+                p_norm = re.sub(r"[^\w\s]", "", p_clean.lower()).strip()
                 if cleaned_parts:
-                    prev_norm = re.sub(r'[^\w\s]', '', cleaned_parts[-1].lower()).strip()
+                    prev_norm = re.sub(r"[^\w\s]", "", cleaned_parts[-1].lower()).strip()
                     if p_norm and prev_norm == p_norm:
                         continue
                 cleaned_parts.append(p_clean)
             text = " ".join(cleaned_parts)
         for n in range(5, 0, -1):
             min_repeat = 2 if n >= 3 else 3
-            pattern = r'\b((?:\w+)(?:[,.!?]?\s+\w+){' + str(n - 1) + r'})(?:[,.!?]?\s+(?:\1)){' + str(min_repeat - 1) + r',}\b'
-            text = re.sub(pattern, r'\1', text, flags=re.IGNORECASE)
+            pattern = (
+                r"\b((?:\w+)(?:[,.!?]?\s+\w+){"
+                + str(n - 1)
+                + r"})(?:[,.!?]?\s+(?:\1)){"
+                + str(min_repeat - 1)
+                + r",}\b"
+            )
+            text = re.sub(pattern, r"\1", text, flags=re.IGNORECASE)
         return text.strip()
 
     @staticmethod
@@ -187,13 +185,13 @@ class ASRService:
             text = getattr(seg, "text", "").strip()
             if not text:
                 continue
-            norm = re.sub(r'[^\w\s]', '', text.lower()).strip()
+            norm = re.sub(r"[^\w\s]", "", text.lower()).strip()
             if not norm:
                 continue
             words = norm.split()
             start = float(getattr(seg, "start", 0))
             end = float(getattr(seg, "end", 0))
-            
+
             is_dup = False
             if spk in recent_by_speaker:
                 for _prev_start, prev_end, prev_norm in recent_by_speaker[spk][-4:]:
@@ -205,7 +203,9 @@ class ASRService:
                         is_dup = True
                         break
             if is_dup:
-                logger.debug(f"ASR Deduplication: Dropping repeated hallucination [{spk}] '{text}' at {start:.1f}s")
+                logger.debug(
+                    f"ASR Deduplication: Dropping repeated hallucination [{spk}] '{text}' at {start:.1f}s"
+                )
                 continue
             if spk not in recent_by_speaker:
                 recent_by_speaker[spk] = []
@@ -227,20 +227,22 @@ class ASRService:
             start = float(seg["start"] if is_dict else getattr(seg, "start", 0.0))
             end = float(seg["end"] if is_dict else getattr(seg, "end", 0.0))
             text = str(seg["text"] if is_dict else getattr(seg, "text", "")).strip()
-            speaker = seg["speaker"] if (is_dict and "speaker" in seg) else getattr(seg, "speaker", None)
-            
+            speaker = (
+                seg["speaker"] if (is_dict and "speaker" in seg) else getattr(seg, "speaker", None)
+            )
+
             if not text:
                 continue
-                
-            sentences = [s.strip() for s in re.split(r'(?<=[.?!;])\s+', text) if s.strip()]
-            
+
+            sentences = [s.strip() for s in re.split(r"(?<=[.?!;])\s+", text) if s.strip()]
+
             if len(sentences) <= 1 or (end - start) <= 2.5:
                 refined.append(seg)
                 continue
-                
+
             total_chars = sum(max(len(s), 1) for s in sentences)
             duration = max(end - start, 0.1)
-            
+
             cur_start = start
             for idx, sent in enumerate(sentences):
                 sent_len = max(len(sent), 1)
@@ -249,7 +251,7 @@ class ASRService:
                 else:
                     sent_dur = duration * (sent_len / total_chars)
                     sent_end = round(cur_start + sent_dur, 2)
-                    
+
                 if is_dict:
                     new_seg = dict(seg)
                     new_seg.update({"start": round(cur_start, 2), "end": sent_end, "text": sent})
@@ -264,13 +266,11 @@ class ASRService:
                         new_seg = seg._replace(**replace_kwargs)
                 elif isinstance(seg, TranscriptionSegment):
                     new_seg = TranscriptionSegment(
-                        start=round(cur_start, 2),
-                        end=sent_end,
-                        text=sent,
-                        speaker=speaker
+                        start=round(cur_start, 2), end=sent_end, text=sent, speaker=speaker
                     )
                 else:
                     import copy
+
                     new_seg = copy.copy(seg)
                     if hasattr(new_seg, "start"):
                         new_seg.start = round(cur_start, 2)
@@ -359,9 +359,7 @@ class ASRService:
                 continue
             cleaned_text = self._sanitize_text(s.text.strip())
             if cleaned_text:
-                segments.append(
-                    TranscriptionSegment(start=s.start, end=s.end, text=cleaned_text)
-                )
+                segments.append(TranscriptionSegment(start=s.start, end=s.end, text=cleaned_text))
         return self._split_into_sentences(self._deduplicate_segments(segments)), info.duration
 
     def transcribe(

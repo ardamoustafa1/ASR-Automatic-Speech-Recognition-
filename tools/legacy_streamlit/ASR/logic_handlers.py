@@ -18,11 +18,7 @@ import streamlit as st
 from config import *
 
 
-def lock_language(lang):
-    """Locks ASR language to Turkish ('tr') when auto-detection or empty language is passed."""
-    if not lang or str(lang).strip().lower() in ("auto", "otomatik", "auto-detect", "detect", "default", "none", "null", ""):
-        return "tr"
-    return str(lang).strip().lower()
+from asr_pro.utils.lang_utils import lock_language
 
 
 _torch = None
