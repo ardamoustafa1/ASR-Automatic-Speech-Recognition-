@@ -1,3 +1,4 @@
+# Asynchronous database engine setup and session management for PostgreSQL.
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine
