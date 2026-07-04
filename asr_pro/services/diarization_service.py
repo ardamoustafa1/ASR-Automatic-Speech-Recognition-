@@ -97,11 +97,16 @@ class DiarizationService:
         try:
             import torch
 
-            # Load pipeline with authentication
-            self._pipeline = Pipeline.from_pretrained(
-                "pyannote/speaker-diarization-3.1",
-                use_auth_token=token,
-            )
+            try:
+                self._pipeline = Pipeline.from_pretrained(
+                    "pyannote/speaker-diarization-3.1",
+                    token=token,
+                )
+            except TypeError:
+                self._pipeline = Pipeline.from_pretrained(
+                    "pyannote/speaker-diarization-3.1",
+                    use_auth_token=token,
+                )
             if self._pipeline is not None and self._device_str in ("cuda", "mps"):
                 try:
                     self._pipeline.to(torch.device(self._device_str))
@@ -205,27 +210,40 @@ class DiarizationService:
                     )
                 )
         else:
-            # Heuristic alignment (fallback when no audio file or model skipped in test mode)
-            current_speaker = "SPEAKER_00"
-            for idx, seg in enumerate(segments):
-                spk = seg.speaker
-                if not spk:
-                    # Alternating turn detection based on pause duration (> 1.2s silence implies turn change)
-                    if idx > 0 and (seg.start - segments[idx - 1].end) > 1.2:
-                        current_speaker = (
-                            "SPEAKER_01" if current_speaker == "SPEAKER_00" else "SPEAKER_00"
+            # Smart heuristic alignment when no pyannote model is available.
+            # Strategy: cluster segments into "conversation turns" by detecting pauses,
+            # then alternate speakers per turn (not per segment).
+            MIN_PAUSE_FOR_TURN = 0.6  # seconds between turns
+            turn_groups: list[list[int]] = []
+            current_group: list[int] = [0]
+
+            for idx in range(1, len(segments)):
+                pause = segments[idx].start - segments[idx - 1].end
+                if pause > MIN_PAUSE_FOR_TURN:
+                    turn_groups.append(current_group)
+                    current_group = [idx]
+                else:
+                    current_group.append(idx)
+            if current_group:
+                turn_groups.append(current_group)
+
+            # Assign alternating speakers per turn group
+            speaker_seq = ["SPEAKER_00", "SPEAKER_01"]
+            for turn_idx, group in enumerate(turn_groups):
+                spk = speaker_seq[turn_idx % 2]
+                for seg_idx in group:
+                    seg = segments[seg_idx]
+                    seg_spk = seg.speaker or spk
+                    speakers_present.add(seg_spk)
+                    aligned_segments.append(
+                        SegmentInput(
+                            start=seg.start,
+                            end=seg.end,
+                            text=seg.text,
+                            speaker=seg_spk,
+                            segment_index=seg.segment_index,
                         )
-                    spk = current_speaker
-                speakers_present.add(spk)
-                aligned_segments.append(
-                    SegmentInput(
-                        start=seg.start,
-                        end=seg.end,
-                        text=seg.text,
-                        speaker=spk,
-                        segment_index=seg.segment_index,
                     )
-                )
 
         agent_id, customer_id = self._identify_roles(aligned_segments, sorted(speakers_present))
         return aligned_segments, agent_id, customer_id
@@ -233,40 +251,130 @@ class DiarizationService:
     def _identify_roles(
         self, segments: list[SegmentInput], speakers: list[str]
     ) -> tuple[str | None, str | None]:
-        """Intelligently determine which speaker is the Agent and which is the Customer."""
+        """Intelligently determine which speaker is the Agent and which is the Customer.
+
+        Uses multiple heuristics:
+        - Agent keywords (greeting/support phrases in Turkish)
+        - Customer keywords (complaint/question phrases in Turkish)
+        - Longer sentences → more likely agent (agents explain, customers complain)
+        - More question marks → more likely customer
+        - First speaker bonus (agent usually greets first)
+        """
         if not speakers:
             return None, None
         if len(speakers) == 1:
             return speakers[0], None
 
+        # Turkish contact center agent phrases
         agent_keywords = [
             "hoş geldiniz",
             "nasıl yardımcı",
+            "yardımcı olabilirim",
             "yardımcı olacağım",
             "müşteri hizmetleri",
             "benim adım",
-            "ben arda",
-            "iyi günler dilerim",
+            "iyi günler",
+            "iyi akşamlar",
             "kayıt altına alınmaktadır",
             "kontrol ediyorum",
+            "kontrol edelim",
             "anlayışınız için",
+            "teşekkür ederiz",
+            "teşekkür ederim",
+            "sistemimize bakıyorum",
+            "hesabınıza bakıyorum",
+            "baktım",
+            "yapabilirim",
+            "yaptım",
+            "işleminiz",
+            "tarafınıza",
+            "sizi anlıyorum",
+            "haklısınız",
+            "not aldım",
+            "aktarıyorum",
+            "yönlendiriyorum",
+            "bağlıyorum",
+        ]
+
+        # Turkish customer complaint/question phrases
+        customer_keywords = [
+            "şikayet",
+            "sorunum var",
+            "olmuyor",
+            "çalışmıyor",
+            "bozuk",
+            "neden",
+            "niye",
+            "nasıl",
+            "ne zaman",
+            "ne oldu",
+            "hata",
+            "ücret",
+            "para",
+            "fatura",
+            "ödeme",
+            "çekti",
+            "kesildi",
+            "iade",
+            "iptal",
+            "gelmedi",
+            "gönderilmedi",
+            "gecikti",
+            "memnun değilim",
+            "kötü",
+            "berbat",
+            "rezalet",
+            "bir türlü",
+            "hâlâ",
+            "yine",
         ]
 
         speaker_scores: dict[str, int] = dict.fromkeys(speakers, 0)
+        speaker_word_counts: dict[str, int] = dict.fromkeys(speakers, 0)
+        speaker_question_counts: dict[str, int] = dict.fromkeys(speakers, 0)
+        speaker_seg_counts: dict[str, int] = dict.fromkeys(speakers, 0)
 
-        # First segment speaker gets a strong greeting bonus
+        # First segment speaker gets a greeting bonus (agents usually speak first)
         if segments and segments[0].speaker in speaker_scores:
-            speaker_scores[segments[0].speaker] += 3
+            speaker_scores[segments[0].speaker] += 4
 
         for seg in segments:
             if not seg.speaker or not seg.text:
                 continue
-            text_lower = seg.text.lower()
+            spk = seg.speaker
+            text_lower = seg.text.lower().strip()
+            words = text_lower.split()
+            speaker_word_counts[spk] = speaker_word_counts.get(spk, 0) + len(words)
+            speaker_seg_counts[spk] = speaker_seg_counts.get(spk, 0) + 1
+
+            # Count question marks (customers ask more questions)
+            speaker_question_counts[spk] = speaker_question_counts.get(spk, 0) + text_lower.count(
+                "?"
+            )
+
             for kw in agent_keywords:
                 if kw in text_lower:
-                    speaker_scores[seg.speaker] += 5
+                    speaker_scores[spk] = speaker_scores.get(spk, 0) + 5
 
-        # Agent is the speaker with highest greeting/support score
+            for kw in customer_keywords:
+                if kw in text_lower:
+                    # Customer keywords REDUCE the agent score for this speaker
+                    speaker_scores[spk] = speaker_scores.get(spk, 0) - 3
+
+        # Agents typically talk MORE words per segment (they explain, clarify)
+        # Give bonus to the speaker with longer average sentences
+        for spk in speakers:
+            seg_count = speaker_seg_counts.get(spk, 1) or 1
+            avg_words = speaker_word_counts.get(spk, 0) / seg_count
+            if avg_words > 12:  # long explanatory sentences → likely agent
+                speaker_scores[spk] = speaker_scores.get(spk, 0) + 3
+            # More questions → likely customer
+            q_count = speaker_question_counts.get(spk, 0)
+            speaker_scores[spk] = speaker_scores.get(spk, 0) - (q_count * 2)
+
+        logger.debug(f"Speaker scores for role identification: {speaker_scores}")
+
+        # Agent is the speaker with highest agent score
         sorted_speakers = sorted(speakers, key=lambda s: speaker_scores.get(s, 0), reverse=True)
         agent_id = sorted_speakers[0]
         customer_id = sorted_speakers[1] if len(sorted_speakers) > 1 else None
