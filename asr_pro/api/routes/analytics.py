@@ -1,3 +1,4 @@
+# API routes providing aggregated contact center statistics and chart data.
 from __future__ import annotations
 
 """API route: analytics — trends, dashboard summary, and top keywords."""
