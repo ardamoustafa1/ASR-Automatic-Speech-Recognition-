@@ -1169,17 +1169,18 @@ def split_segments_into_sentences(segments: list) -> list:
                 sent_dur = duration * (sent_len / total_chars)
                 sent_end = round(cur_start + sent_dur, 2)
                 
+            sub_words = [w for w in getattr(seg, "words", None) if getattr(w, "start", 0) < sent_end and getattr(w, "end", 0) > round(cur_start, 2)] if getattr(seg, "words", None) else None
             if is_dict:
                 new_seg = dict(seg)
-                new_seg.update({"start": round(cur_start, 2), "end": sent_end, "text": sent})
+                new_seg.update({"start": round(cur_start, 2), "end": sent_end, "text": sent, "words": sub_words})
             elif hasattr(seg, "_replace"):
                 replace_kwargs = {"start": round(cur_start, 2), "end": sent_end, "text": sent}
                 if hasattr(seg, "_fields") and "words" in seg._fields:
-                    replace_kwargs["words"] = getattr(seg, "words", None) or []
+                    replace_kwargs["words"] = sub_words or []
                 try:
                     new_seg = seg._replace(**replace_kwargs)
                 except Exception:
-                    replace_kwargs["words"] = None
+                    replace_kwargs.pop("words", None)
                     new_seg = seg._replace(**replace_kwargs)
             else:
                 import copy
@@ -1190,6 +1191,8 @@ def split_segments_into_sentences(segments: list) -> list:
                     new_seg.end = sent_end
                 if hasattr(new_seg, "text"):
                     new_seg.text = sent
+                if hasattr(new_seg, "words"):
+                    new_seg.words = sub_words
             refined.append(new_seg)
             cur_start = sent_end
     return refined
@@ -1273,13 +1276,13 @@ def build_transcribe_options(profile: ASRProfile, lang: str, task: str, hotwords
         "temperature": profile.temperature,
         "compression_ratio_threshold": 2.0,
         "log_prob_threshold": max(getattr(profile, "log_prob_threshold", -0.8), -0.8),
-        "no_speech_threshold": min(getattr(profile, "no_speech_threshold", 0.6), 0.6),
+        "no_speech_threshold": min(getattr(profile, "no_speech_threshold", 0.45), 0.45),
         "condition_on_previous_text": False,
         "no_repeat_ngram_size": 3,
         "initial_prompt": build_initial_prompt(hotwords),
         "vad_filter": profile.vad_filter,
         "chunk_length": profile.chunk_length,
-        "word_timestamps": False,
+        "word_timestamps": True,
         "without_timestamps": False,
         "max_new_tokens": ASR_MAX_NEW_TOKENS,
         "multilingual": False,
@@ -1290,7 +1293,7 @@ def build_transcribe_options(profile: ASRProfile, lang: str, task: str, hotwords
         options["hallucination_silence_threshold"] = profile.hallucination_silence_threshold
     if profile.vad_filter:
         options["vad_parameters"] = {
-            "threshold": max(getattr(profile, "vad_threshold", 0.5), 0.5),
+            "threshold": max(getattr(profile, "vad_threshold", 0.40), 0.40),
             "min_speech_duration_ms": 250,
             "min_silence_duration_ms": max(getattr(profile, "min_silence_duration_ms", 500), 500),
             "speech_pad_ms": profile.speech_pad_ms,
@@ -1678,6 +1681,7 @@ def transcribe_with_profile(
             no_speech_prob=float(getattr(segment, "no_speech_prob", 0.0) or 0.0),
             compression_ratio=float(getattr(segment, "compression_ratio", 1.0) or 1.0),
             raw_text=raw_text,
+            words=getattr(segment, "words", None),
         )
         segments_data.append(rendered_segment)
 
@@ -1971,11 +1975,43 @@ def transcribe_audio_file(
             left_fmt, left_swears, left_full, left_segs, left_info, left_metrics = left_result
             right_fmt, right_swears, right_full, right_segs, right_info, right_metrics = right_result
 
-            # Tag each segment with its channel speaker
+            import soundfile as sf
+            import numpy as np
+            try:
+                left_audio, _ = sf.read(left_path)
+                right_audio, _ = sf.read(right_path)
+            except Exception:
+                left_audio, right_audio = None, None
+
+            def _get_rms(audio_data, start_sec, end_sec):
+                if audio_data is None:
+                    return 1.0
+                s_idx = int(start_sec * 16000)
+                e_idx = int(end_sec * 16000)
+                slice_data = audio_data[s_idx:e_idx]
+                if len(slice_data) == 0:
+                    return 0.0
+                return float(np.sqrt(np.mean(slice_data**2)))
+
+            clean_left = []
             for seg in left_segs:
+                rms_l = _get_rms(left_audio, seg.start, seg.end)
+                rms_r = _get_rms(right_audio, seg.start, seg.end)
+                if rms_r > rms_l * 4.0 and rms_l < 0.015:
+                    continue
                 seg.speaker = "SPEAKER_00"
+                clean_left.append(seg)
+            left_segs = clean_left
+
+            clean_right = []
             for seg in right_segs:
+                rms_r = _get_rms(right_audio, seg.start, seg.end)
+                rms_l = _get_rms(left_audio, seg.start, seg.end)
+                if rms_l > rms_r * 4.0 and rms_r < 0.015:
+                    continue
                 seg.speaker = "SPEAKER_01"
+                clean_right.append(seg)
+            right_segs = clean_right
 
             left_segs = split_segments_into_sentences(left_segs)
             right_segs = split_segments_into_sentences(right_segs)
@@ -2414,6 +2450,7 @@ def redecode_low_confidence_segments(
                             getattr(retry_segments[0], "compression_ratio", 1.0) or 1.0
                         ),
                         raw_text=retry_text,
+                        words=getattr(retry_segments[0], "words", None),
                     )
                     redecoded_count += 1
         except Exception:
