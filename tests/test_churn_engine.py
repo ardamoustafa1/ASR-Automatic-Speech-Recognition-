@@ -71,6 +71,41 @@ def test_competitor_ner():
 
 
 @pytest.mark.skipif(not MODEL_AVAILABLE, reason="HuggingFace model required")
+def test_risk_score_is_length_invariant():
+    """Regression test: a call should not score higher purely because it has
+    more chunks. Previously, cumulative_risk += final_segment_risk * 0.6 summed
+    without normalization, so any call long enough to produce several
+    qualifying chunks saturated to 100% regardless of severity."""
+    mild_complaint = "Bu hizmetten pek memnun değilim, belki başka seçenekleri düşünebilirim."
+    neutral = "Bugün hava durumu hakkında konuşalım."
+
+    short_segments = [
+        SegmentInput(start=i * 5, end=(i + 1) * 5, text=mild_complaint, segment_index=i)
+        for i in range(5)  # 1 chunk
+    ]
+    long_segments = [
+        SegmentInput(start=i * 5, end=(i + 1) * 5, text=mild_complaint, segment_index=i)
+        for i in range(20)  # 4 chunks, same repeated content
+    ]
+
+    short_result = analyze_churn_risk(short_segments)
+    long_result = analyze_churn_risk(long_segments)
+
+    # A longer call repeating the exact same signal should not inflate the
+    # score just because it produced more chunks.
+    assert long_result.risk_score <= short_result.risk_score + 0.1
+    assert long_result.risk_score < 1.0
+
+    # A single low-key "normal conversation" chunk should never be high risk.
+    neutral_segments = [
+        SegmentInput(start=i * 5, end=(i + 1) * 5, text=neutral, segment_index=i)
+        for i in range(5)
+    ]
+    neutral_result = analyze_churn_risk(neutral_segments)
+    assert neutral_result.is_high_risk is False
+
+
+@pytest.mark.skipif(not MODEL_AVAILABLE, reason="HuggingFace model required")
 def test_speaker_isolation():
     # Scenario: Agent says "iptal edeceğim" -> Should not trigger churn
     segments = [
@@ -88,3 +123,40 @@ def test_speaker_isolation():
     assert result.is_high_risk is False
     assert result.risk_score == 0.0
     assert len(result.insights) == 0
+
+
+@pytest.mark.skipif(not MODEL_AVAILABLE, reason="HuggingFace model required")
+def test_zero_false_positive_agent_and_neutral_speech():
+    """Verify that agent explanations and neutral customer sentences never trigger false positive churn alarms."""
+    # These exact sentences caused false positive alarms before Layer 1 & 2 guards:
+    false_positive_segs = [
+        SegmentInput(0, 4, "İyiyim, teşekkürler. Ben de iyiyim, teşekkür ederim. Tüzeye tarifeleriniz için aramıştım.", 0),
+        SegmentInput(5, 9, "Şu an mevcut tarife 50 GB sosyal paket sırası kullanıyoruz. Tarifelerimizin sağ olsun fiyatı 1050 TL.", 1),
+        SegmentInput(10, 14, "Ayrıca hangi şey var mı? Gigabyte'ı. 840. Bir paket daha vardı normalde.", 2),
+        SegmentInput(15, 19, "Uygulamadan yatabiliyor muyum? Bu 840'ı 840'dan mı yapabiliyorsunuz? Yok. Sizler oradan tekrar.", 3),
+        SegmentInput(20, 24, "Aranmışsınız, işaretlisiniz. Bugün de son günü olduğu için mağaza danışmanlarımıza dikmişler.", 4),
+        SegmentInput(25, 29, "Ay sonu olduğu için tekrardan arattık aranıyorsunuz mağaza danışmanlarım olarak.", 5),
+    ]
+
+    result = analyze_churn_risk(false_positive_segs)
+
+    # 0 Hata / Sıfır Yanlış Alarm: None of these sentences should create a churn insight!
+    assert len(result.insights) == 0
+    assert result.is_high_risk is False
+    assert result.risk_score < 0.20
+
+
+@pytest.mark.skipif(not MODEL_AVAILABLE, reason="HuggingFace model required")
+def test_enterprise_competitor_and_root_cause_diagnostics():
+    """Verify that true threats get correctly flagged with severity badges and root cause diagnosis."""
+    true_threat_segs = [
+        SegmentInput(0, 5, "950 TL mi gözüküyordu o? Rakip A1, S&S her şey için ötesi var. O 990 TL bu sana. Ben bir düşünüyorum.", 0)
+    ]
+
+    result = analyze_churn_risk(true_threat_segs)
+
+    assert len(result.insights) == 1
+    insight = result.insights[0]
+    assert "a1" in result.competitors_mentioned or "rakip" in result.competitors_mentioned
+    assert insight.severity == "🔥 Kritik Tehdit"
+    assert "Rakip Firma" in insight.trigger_reason
