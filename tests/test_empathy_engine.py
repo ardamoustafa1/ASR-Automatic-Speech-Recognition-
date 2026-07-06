@@ -97,3 +97,84 @@ def test_crisis_management_bonus_simulated():
     # To test AI logic purely, we mock it or pass use_ai=False.
     # We will test the structural output of the engine.
     pass
+
+
+def test_stereo_cross_channel_jitter_not_counted_as_interruption():
+    """Regression test: found via real stereo call-center audio - independently
+    transcribed left/right channels produce sub-second timestamp overlap from
+    VAD boundary imprecision alone, not real talk-overs. A brief overlap must
+    not be scored as an interruption."""
+    segments = [
+        SegmentInput(
+            start=0.0,
+            end=3.0,
+            text="Faturamda bir sorun var da onu konuşmak istiyorum",
+            segment_index=0,
+            speaker="SPEAKER_00",
+        ),
+        # Only 0.3s of overlap - typical cross-channel transcription jitter,
+        # well under the real-interruption threshold.
+        SegmentInput(
+            start=2.7,
+            end=5.0,
+            text="Tabii efendim hemen bakıyorum",
+            segment_index=1,
+            speaker="SPEAKER_01",
+        ),
+    ]
+
+    result = analyze_soft_skills(segments, agent_speaker_id="SPEAKER_01", use_ai=False)
+
+    assert result.interruption_count == 0
+
+
+def test_implausible_mega_overlap_not_counted_as_interruption():
+    """Regression test: found via real stereo call-center audio - some Whisper
+    segments have grossly incorrect end timestamps that produce multi-second
+    "overlaps" (observed up to 11s in real recordings). No human interruption
+    lasts that long; this is a corrupted timestamp, not a real talk-over."""
+    segments = [
+        SegmentInput(
+            start=0.0,
+            end=12.0,  # corrupted/over-extended end timestamp
+            text="Faturamda bir sorun var da onu konuşmak istiyorum",
+            segment_index=0,
+            speaker="SPEAKER_00",
+        ),
+        SegmentInput(
+            start=3.0,
+            end=6.0,
+            text="Tabii efendim hemen bakıyorum",
+            segment_index=1,
+            speaker="SPEAKER_01",
+        ),
+    ]
+
+    result = analyze_soft_skills(segments, agent_speaker_id="SPEAKER_01", use_ai=False)
+
+    assert result.interruption_count == 0
+
+
+def test_backchannel_ack_not_counted_as_interruption():
+    """A one-word backchannel acknowledgment ("Evet") is not a real utterance
+    being cut off, even if a large overlap is measured against it."""
+    segments = [
+        SegmentInput(
+            start=0.0,
+            end=0.4,
+            text="Evet",
+            segment_index=0,
+            speaker="SPEAKER_00",
+        ),
+        SegmentInput(
+            start=0.1,
+            end=3.0,
+            text="Sizi anlıyorum efendim hemen yardımcı oluyorum",
+            segment_index=1,
+            speaker="SPEAKER_01",
+        ),
+    ]
+
+    result = analyze_soft_skills(segments, agent_speaker_id="SPEAKER_01", use_ai=False)
+
+    assert result.interruption_count == 0
