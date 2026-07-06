@@ -10,6 +10,9 @@ from sqlalchemy.pool import StaticPool
 os.environ["ASR_JWT_SECRET_KEY"] = "test_secret_key_at_least_32_bytes_long"
 os.environ["ASR_ADMIN_PASSWORD"] = "password123"
 os.environ["ASR_AGENT_PASSWORD"] = "password123"
+os.environ["ASR_TEAM_LEAD_PASSWORD"] = "password123"
+os.environ["ASR_QA_PASSWORD"] = "password123"
+os.environ["ASR_AUDITOR_PASSWORD"] = "password123"
 TEST_DB_URL = "sqlite:///file:testdb?mode=memory&cache=shared&uri=true"
 os.environ["ASR_DATABASE_URL"] = TEST_DB_URL
 
