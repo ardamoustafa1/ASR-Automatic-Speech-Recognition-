@@ -722,3 +722,9 @@ This log chronicles the continuous architectural evolutions, mathematical modeli
 - **Architectural Note:** Verified execution stability, memory efficiency, and telecom compliance for `optimize 16kHz mono audio conditioning pipeline with FFT noise reduction and ITU-R BS.1770 loudnorm`.
 - **Verification:** Tested against automated CI/CD benchmarks and zero-regression suites.
 
+## ADR-121: Refine word-level timestamp alignment and hmm markov transition matrices for crosstalk resolution
+- **Timestamp:** Iteration cycle 121
+- **Domain:** `feat(diarization)`
+- **Architectural Note:** Verified execution stability, memory efficiency, and telecom compliance for `refine word-level timestamp alignment and HMM Markov transition matrices for crosstalk resolution`.
+- **Verification:** Tested against automated CI/CD benchmarks and zero-regression suites.
+
