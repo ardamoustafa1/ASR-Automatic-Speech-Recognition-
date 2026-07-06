@@ -156,46 +156,32 @@ def seed_defaults(db: Session) -> None:
 
     from loguru import logger
 
-    # Admin User Seeding
-    admin_user = db.query(User).filter(User.username == "admin").first()
-    if not admin_user:
-        admin_password = os.environ.get("ASR_ADMIN_PASSWORD")
-        if not admin_password:
+    def _seed_user(username: str, env_var: str, role: str, team: str | None = None) -> None:
+        if db.query(User).filter(User.username == username).first():
+            return
+        password = os.environ.get(env_var)
+        if not password:
             if os.getenv("ASR_ENV") == "prod":
-                raise RuntimeError("ASR_ADMIN_PASSWORD must be set in production.")
-            admin_password = secrets.token_urlsafe(16)
-            logger.warning(
-                f"ASR_ADMIN_PASSWORD not set. Generated random admin password: {admin_password}"
-            )
+                raise RuntimeError(f"{env_var} must be set in production.")
+            password = secrets.token_urlsafe(16)
+            logger.warning(f"{env_var} not set. Generated random password for '{username}': {password}")
         db.add(
             User(
                 id=new_uuid(),
-                username="admin",
-                hashed_password=pwd_context.hash(admin_password),
-                role="admin",
+                username=username,
+                hashed_password=pwd_context.hash(password),
+                role=role,
+                team=team,
                 is_active=True,
             )
         )
 
-    # Agent User Seeding
-    agent_user = db.query(User).filter(User.username == "agent").first()
-    if not agent_user:
-        agent_password = os.environ.get("ASR_AGENT_PASSWORD")
-        if not agent_password:
-            if os.getenv("ASR_ENV") == "prod":
-                raise RuntimeError("ASR_AGENT_PASSWORD must be set in production.")
-            agent_password = secrets.token_urlsafe(16)
-            logger.warning(
-                f"ASR_AGENT_PASSWORD not set. Generated random agent password: {agent_password}"
-            )
-        db.add(
-            User(
-                id=new_uuid(),
-                username="agent",
-                hashed_password=pwd_context.hash(agent_password),
-                role="agent",
-                is_active=True,
-            )
-        )
+    # Demo users covering every role in the RBAC matrix. `agent` and `team_lead`
+    # share a team so team-scoped conversation visibility is observable out of the box.
+    _seed_user("admin", "ASR_ADMIN_PASSWORD", "admin")
+    _seed_user("agent", "ASR_AGENT_PASSWORD", "agent", team="team_alpha")
+    _seed_user("team_lead", "ASR_TEAM_LEAD_PASSWORD", "team_lead", team="team_alpha")
+    _seed_user("qa", "ASR_QA_PASSWORD", "qa")
+    _seed_user("auditor", "ASR_AUDITOR_PASSWORD", "auditor")
 
     db.commit()
