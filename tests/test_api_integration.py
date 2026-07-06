@@ -162,3 +162,37 @@ def test_delete_conversation(client: TestClient):
         f"/api/v1/conversations/{conv_id}", headers={"Authorization": f"Bearer {token}"}
     )
     assert get_response.status_code == 404
+
+
+def test_reassign_speaker_endpoint(client: TestClient):
+    """Test interactive RLHF speaker reassignment endpoint."""
+    token = get_admin_token(client)
+    payload = {
+        "full_transcript": "Merhaba Vodafone ben Ali. Faturam çok yüksek geldi.",
+        "segments": [
+            {"start": 0.0, "end": 2.0, "text": "Merhaba Vodafone ben Ali.", "speaker": "SPEAKER_00"},
+            {"start": 2.5, "end": 4.5, "text": "Faturam çok yüksek geldi.", "speaker": "SPEAKER_01"},
+        ],
+        "sector": "telecom",
+    }
+    client.post(
+        "/api/v1/conversations/analyze", json=payload, headers={"Authorization": f"Bearer {token}"}
+    )
+    import time
+    time.sleep(1)
+
+    convs = client.get("/api/v1/conversations", headers={"Authorization": f"Bearer {token}"}).json()
+    assert len(convs) > 0
+    conv_id = convs[0]["id"]
+    detail = client.get(f"/api/v1/conversations/{conv_id}", headers={"Authorization": f"Bearer {token}"}).json()
+    assert len(detail["segments"]) > 0
+    seg_id = detail["segments"][0]["id"]
+
+    reassign_res = client.post(
+        f"/api/v1/conversations/{conv_id}/segments/{seg_id}/reassign",
+        json={"new_speaker": "SPEAKER_02", "reason": "QA Test"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert reassign_res.status_code == 200
+    assert reassign_res.json()["new_speaker"] == "SPEAKER_02"
+    assert "güncellendi" in reassign_res.json()["message"]
