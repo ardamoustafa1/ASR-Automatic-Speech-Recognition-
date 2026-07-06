@@ -5,7 +5,7 @@ ctranslate2>=3.24.0
 mlx-whisper; platform_system == "Darwin" and platform_machine == "arm64"
 transformers>=4.40.0
 torch>=2.2.0,<3.0.0
-pyannote.audio>=3.1.1
+pyannote.audio>=4.0.4,<5.0.0
 
 # ─── Audio / Export ─────────────────────────────────────────────────────────
 fpdf>=1.7.2
@@ -30,6 +30,7 @@ psycopg2-binary>=2.9.9
 
 # ─── Caching ─────────────────────────────────────────────────────────────────
 redis>=5.0.0
+rq>=1.16.0
 
 # ─── Auth & Security ─────────────────────────────────────────────────────────
 PyJWT>=2.8.0
