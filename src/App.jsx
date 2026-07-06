@@ -9,6 +9,7 @@ import {
   PanelLeft,
   UploadCloud,
   Mic,
+  ShieldCheck,
 } from "lucide-react";
 import { Routes, Route, NavLink } from "react-router-dom";
 import { Toaster, toast } from "react-hot-toast";
@@ -20,6 +21,7 @@ import ConversationsPage from "./pages/Conversations";
 import AlertsPage from "./pages/Alerts";
 import LiveASRPage from "./pages/LiveASR";
 import LoginPage from "./pages/Login";
+import AuditLogPage from "./pages/AuditLog";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { api } from "./api/client";
 import { useAppStore } from "./store/useAppStore";
@@ -131,11 +133,14 @@ const NAV = [
   { to: "/keywords", icon: Hash, label: "Kelime Kuralları" },
   { to: "/analytics", icon: BarChart3, label: "Trend Analitiği" },
   { to: "/alerts", icon: Bell, label: "Uyarılar" },
+  { to: "/audit-log", icon: ShieldCheck, label: "Denetim Kaydı", roles: ["admin", "auditor"] },
 ];
 
 function App() {
   const isAuthenticated = useAppStore((state) => state.isAuthenticated);
   const setIsAuthenticated = useAppStore((state) => state.setIsAuthenticated);
+  const user = useAppStore((state) => state.user);
+  const setUser = useAppStore((state) => state.setUser);
   const sidebarOpen = useAppStore((state) => state.sidebarOpen);
   const setSidebarOpen = useAppStore((state) => state.setSidebarOpen);
   const alertCount = useAppStore((state) => state.alertCount);
@@ -145,7 +150,8 @@ function App() {
   useEffect(() => {
     api
       .me()
-      .then(() => {
+      .then((me) => {
+        setUser(me);
         setIsAuthenticated(true);
       })
       .catch(() => {
@@ -154,7 +160,7 @@ function App() {
       .finally(() => {
         setIsInitializing(false);
       });
-  }, [setIsAuthenticated]);
+  }, [setIsAuthenticated, setUser]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -189,7 +195,13 @@ function App() {
       <>
         <Toaster position="top-right" />
         <LoginPage
-          onLogin={() => {
+          onLogin={async () => {
+            try {
+              const me = await api.me();
+              setUser(me);
+            } catch {
+              // Non-fatal: role-based UI gating simply falls back to defaults.
+            }
             setIsAuthenticated(true);
             toast.success("Giriş başarılı");
           }}
@@ -214,7 +226,8 @@ function App() {
 
         <div className="section-title">Modüller</div>
         <nav className="nav-list">
-          {NAV.map(({ to, icon: Icon, label }) => (
+          {NAV.filter((item) => !item.roles || item.roles.includes(user?.role)).map(
+            ({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
@@ -260,6 +273,7 @@ function App() {
             <Route path="/keywords" element={<KeywordsPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/alerts" element={<AlertsPage />} />
+            <Route path="/audit-log" element={<AuditLogPage />} />
           </Routes>
         </ErrorBoundary>
       </main>
