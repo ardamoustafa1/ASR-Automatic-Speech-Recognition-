@@ -119,3 +119,30 @@ def test_deduplicate_assigned_segments():
     assert len(cleaned) == 2
     assert cleaned[0].text == "Efendim?"
     assert cleaned[1].text == "İyi günler."
+
+
+def test_stereo_physical_assignment_bypass(tmp_path):
+    import wave
+    import numpy as np
+    from unittest.mock import patch, MagicMock
+
+    file_path = str(tmp_path / "bypass_stereo.wav")
+    sr = 16000
+    with wave.open(file_path, "wb") as wf:
+        wf.setnchannels(2)
+        wf.setsampwidth(2)
+        wf.setframerate(sr)
+        wf.writeframes(np.zeros(sr * 2 * 2, dtype=np.int16).tobytes())
+
+    service = DiarizationService.get_instance()
+    segments = [
+        SegmentInput(start=0.0, end=1.0, text="Merhaba agent", speaker="SPEAKER_00"),
+        SegmentInput(start=0.5, end=1.5, text="Merhaba customer", speaker="SPEAKER_01"),
+    ]
+
+    with patch.object(service, "diarize", side_effect=Exception("Should not be called when bypassing!")):
+        aligned, agent_id, customer_id = service.assign_speakers_to_segments(segments, audio_path=file_path)
+        assert len(aligned) == 2
+        assert aligned[0].speaker == "SPEAKER_00"
+        assert aligned[1].speaker == "SPEAKER_01"
+
