@@ -152,3 +152,9 @@ This log chronicles the continuous architectural evolutions, mathematical modeli
 - **Architectural Note:** Verified execution stability, memory efficiency, and telecom compliance for `implement numeric currency NER extraction to capture exact TL amounts and price objections`.
 - **Verification:** Tested against automated CI/CD benchmarks and zero-regression suites.
 
+## ADR-026: Model 3-state hmm progression trajectory to differentiate resolved de-escalations from terminal churn
+- **Timestamp:** Iteration cycle 26
+- **Domain:** `feat(churn)`
+- **Architectural Note:** Verified execution stability, memory efficiency, and telecom compliance for `model 3-state HMM progression trajectory to differentiate resolved de-escalations from terminal churn`.
+- **Verification:** Tested against automated CI/CD benchmarks and zero-regression suites.
+
