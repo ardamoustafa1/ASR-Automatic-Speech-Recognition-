@@ -151,11 +151,25 @@ def _fuzzy_match_phrase(pattern: str, text: str) -> tuple[bool, int, int]:
 
 
 def analyze_compliance_risk(
-    segments: Sequence[SegmentInput], domain_key: str = "general", use_ai: bool = True
+    segments: Sequence[SegmentInput],
+    domain_key: str = "general",
+    use_ai: bool = True,
+    agent_speaker_id: str | None = None,
 ) -> list[ComplianceViolation]:
-    """Sıfır Hata Toleranslı Hibrid Uyum Motoru (Fuzzy Matching + Negation Filter + NLP Confidence Gate)."""
+    """Sıfır Hata Toleranslı Hibrid Uyum Motoru (Fuzzy Matching + Negation Filter + NLP Confidence Gate).
+
+    Regulatory obligations (KVKK/BTK/SPK etc.) apply to what the AGENT says,
+    not the customer - a customer asking "kredi kartı şifremi mi istiyorsunuz?"
+    or quoting a red-flag phrase back must not be scored as a violation. When
+    `agent_speaker_id` is provided, only that speaker's segments are checked.
+    """
     if not segments:
         return []
+
+    if agent_speaker_id:
+        segments = [s for s in segments if not s.speaker or s.speaker == agent_speaker_id]
+        if not segments:
+            return []
 
     violations = []
     domain_patterns = RED_FLAG_PATTERNS.get(domain_key, {})
