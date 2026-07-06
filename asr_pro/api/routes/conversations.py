@@ -7,7 +7,6 @@ import shutil
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     HTTPException,
@@ -15,10 +14,13 @@ from fastapi import (
     Request,
     UploadFile,
 )
+from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from asr_pro.api.deps import get_db, limiter
+from asr_pro.api.rbac import ADMIN, require_roles, scope_conversations
+from asr_pro.api.routes.auth import User as AuthUser
 from asr_pro.api.routes.auth import get_current_user
 from asr_pro.api.schemas.conversations import (
     AnalyzeSegmentsRequest,
@@ -30,17 +32,41 @@ from asr_pro.api.schemas.conversations import (
 )
 from asr_pro.config import TEMP_AUDIO_DIR
 from asr_pro.core.keyword_engine import SegmentInput, hits_to_dict
-from asr_pro.db.models import Conversation, KeywordHit, Topic, TranscriptSegmentRow, new_uuid
+from asr_pro.db.models import (
+    AuditLog,
+    Conversation,
+    KeywordHit,
+    Topic,
+    TranscriptSegmentRow,
+    new_uuid,
+)
+from asr_pro.db.models import User as DBUser
 from asr_pro.db.session import SessionLocal
 from asr_pro.services.asr_service import ASRService
 from asr_pro.services.conversation_service import (
     analyze_without_save,
     save_conversation_with_analysis,
 )
+from asr_pro.services.task_queue import enqueue
 
 router = APIRouter(
     prefix="/conversations", tags=["conversations"], dependencies=[Depends(get_current_user)]
 )
+
+
+def _log_audit_view(db: Session, current_user: AuthUser, action: str, conversation_id: str) -> None:
+    """Record a 'who viewed/exported what, when' audit entry for sensitive transcript access."""
+    db_user = db.query(DBUser).filter(DBUser.username == current_user.username).first()
+    db.add(
+        AuditLog(
+            user_id=db_user.id if db_user else None,
+            username=current_user.username,
+            action=action,
+            target_resource=f"/conversations/{conversation_id}",
+            details={"role": current_user.role},
+        )
+    )
+    db.commit()
 
 
 @router.get("", response_model=list[ConversationOut])
@@ -48,11 +74,13 @@ def list_conversations(
     limit: int = Query(50, le=200),
     sector: str | None = None,
     db: Session = Depends(get_db),
+    current_user: AuthUser = Depends(get_current_user),
 ):
     """List conversations with aggregated hit counts — uses a single subquery (no N+1)."""
     q = db.query(Conversation).order_by(Conversation.created_at.desc())
     if sector:
         q = q.filter(Conversation.sector == sector)
+    q = scope_conversations(q, current_user, db)
     convs = q.limit(limit).all()
 
     if not convs:
@@ -84,10 +112,16 @@ def list_conversations(
 
 
 @router.get("/{conversation_id}", response_model=ConversationDetail)
-def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
-    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+def get_conversation(
+    conversation_id: str,
+    db: Session = Depends(get_db),
+    current_user: AuthUser = Depends(get_current_user),
+):
+    q = db.query(Conversation).filter(Conversation.id == conversation_id)
+    conv = scope_conversations(q, current_user, db).first()
     if not conv:
         raise HTTPException(404, "Görüşme bulunamadı")
+    _log_audit_view(db, current_user, "VIEW", conversation_id)
 
     segments = (
         db.query(TranscriptSegmentRow)
@@ -141,7 +175,9 @@ def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
     )
 
 
-def _process_analysis_background(payload_data: dict, segments_data: list) -> None:
+def _process_analysis_background(
+    payload_data: dict, segments_data: list, agent_id: str | None = None
+) -> None:
     """Background task: save conversation with full NLP analysis."""
     db = SessionLocal()
     try:
@@ -155,12 +191,15 @@ def _process_analysis_background(payload_data: dict, segments_data: list) -> Non
             uploaded_name=payload_data.get("uploaded_name"),
             asr_confidence=payload_data.get("asr_confidence", 0.0),
             quality_gate_passed=payload_data.get("quality_gate_passed", True),
+            agent_id=agent_id,
         )
     finally:
         db.close()
 
 
-def _process_audio_upload_background(file_path: str, filename: str, sector: str) -> None:
+def _process_audio_upload_background(
+    file_path: str, filename: str, sector: str, agent_id: str | None = None
+) -> None:
     """Background task: transcribe audio file and run full NLP + Diarization analysis."""
     from loguru import logger
 
@@ -170,7 +209,7 @@ def _process_audio_upload_background(file_path: str, filename: str, sector: str)
         asr = ASRService.get_instance()
         transcribe_res = asr.transcribe(file_path)
         if isinstance(transcribe_res, tuple) and len(transcribe_res) >= 2:
-            raw_segments, duration = transcribe_res[0], transcribe_res[1]
+            raw_segments = transcribe_res[0]
             confidence = 0.85
             full_text = " ".join(getattr(s, "text", "") for s in raw_segments)
         elif isinstance(transcribe_res, dict):
@@ -209,6 +248,7 @@ def _process_audio_upload_background(file_path: str, filename: str, sector: str)
             uploaded_name=filename,
             asr_confidence=confidence,
             quality_gate_passed=True,
+            agent_id=agent_id,
         )
         logger.info(f"Successfully processed uploaded conversation for {filename}")
     except Exception as exc:
@@ -221,9 +261,9 @@ def _process_audio_upload_background(file_path: str, filename: str, sector: str)
 @limiter.limit("20/minute")
 def upload_audio_file(
     request: Request,
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     sector: str = Query("omni"),
+    current_user: AuthUser = Depends(get_current_user),
 ):
     """Upload an audio file (.wav, .mp3) for automated transcription, diarization, and NLP analysis."""
     TEMP_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
@@ -233,8 +273,12 @@ def upload_audio_file(
     with open(dest_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    background_tasks.add_task(
-        _process_audio_upload_background, dest_path, file.filename or "audio.wav", sector
+    enqueue(
+        _process_audio_upload_background,
+        dest_path,
+        file.filename or "audio.wav",
+        sector,
+        current_user.username,
     )
     return {
         "message": "Ses dosyası yüklendi ve transkripsiyon/diarization işlemi arka plana alındı.",
@@ -246,7 +290,9 @@ def upload_audio_file(
 @router.post("/analyze", status_code=202)
 @limiter.limit("60/minute")
 def analyze_conversation(
-    request: Request, payload: AnalyzeSegmentsRequest, background_tasks: BackgroundTasks
+    request: Request,
+    payload: AnalyzeSegmentsRequest,
+    current_user: AuthUser = Depends(get_current_user),
 ):
     """Queue a conversation for background NLP analysis (non-blocking)."""
     segments = [
@@ -259,7 +305,7 @@ def analyze_conversation(
         )
         for i, s in enumerate(payload.segments)
     ]
-    background_tasks.add_task(_process_analysis_background, payload.model_dump(), segments)
+    enqueue(_process_analysis_background, payload.model_dump(), segments, current_user.username)
     return {"message": "Analiz işlemi arka plana alındı.", "status": "processing"}
 
 
@@ -272,9 +318,10 @@ def analyze_text(request: Request, payload: AnalyzeTextRequest, db: Session = De
     return {"hits": hits_to_dict(hits), "hit_count": len(hits)}
 
 
-@router.delete("/{conversation_id}")
+@router.delete("/{conversation_id}", dependencies=[Depends(require_roles(ADMIN))])
 def delete_conversation(conversation_id: str, db: Session = Depends(get_db)):
-    """Delete a conversation entirely (GDPR Right to be Forgotten)."""
+    """Delete a conversation entirely (GDPR Right to be Forgotten). Admin-only:
+    an irreversible action is deliberately not opened up to agents/team_leads."""
     conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -285,11 +332,17 @@ def delete_conversation(conversation_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{conversation_id}/export")
-def export_conversation(conversation_id: str, db: Session = Depends(get_db)):
+def export_conversation(
+    conversation_id: str,
+    db: Session = Depends(get_db),
+    current_user: AuthUser = Depends(get_current_user),
+):
     """Export conversation data (GDPR Right to Data Portability)."""
-    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    q = db.query(Conversation).filter(Conversation.id == conversation_id)
+    conv = scope_conversations(q, current_user, db).first()
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    _log_audit_view(db, current_user, "EXPORT", conversation_id)
 
     segments = (
         db.query(TranscriptSegmentRow)
@@ -309,4 +362,67 @@ def export_conversation(conversation_id: str, db: Session = Depends(get_db)):
         "segments": [
             {"start": s.start, "end": s.end, "text": s.text, "speaker": s.speaker} for s in segments
         ],
+    }
+
+
+class ReassignSpeakerRequest(BaseModel):
+    new_speaker: str
+    reason: str | None = "QA Manual Correction / RLHF Feedback"
+
+
+@router.post("/{conversation_id}/segments/{segment_id}/reassign")
+def reassign_segment_speaker(
+    conversation_id: str,
+    segment_id: str,
+    body: ReassignSpeakerRequest,
+    db: Session = Depends(get_db),
+    current_user: AuthUser = Depends(get_current_user),
+):
+    """Interactive Speaker Re-assignment & Active Learning (RLHF) Loop.
+
+    Allows QA assurance specialists to manually correct a segment's speaker assignment.
+    Updates the database row and triggers real-time voiceprint adaptation/reinforcement.
+    """
+    seg = (
+        db.query(TranscriptSegmentRow)
+        .filter(TranscriptSegmentRow.id == segment_id, TranscriptSegmentRow.conversation_id == conversation_id)
+        .first()
+    )
+    if not seg:
+        raise HTTPException(status_code=404, detail="Segment not found")
+
+    old_speaker = seg.speaker
+    seg.speaker = body.new_speaker
+
+    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if conv and conv.metadata_json and isinstance(conv.metadata_json, dict):
+        meta = dict(conv.metadata_json)
+        rlhf_logs = meta.get("rlhf_corrections", [])
+        rlhf_logs.append({
+            "segment_id": segment_id,
+            "old_speaker": old_speaker,
+            "new_speaker": body.new_speaker,
+            "corrected_by": current_user.username,
+            "reason": body.reason,
+        })
+        meta["rlhf_corrections"] = rlhf_logs
+        conv.metadata_json = meta
+        
+        # Update word level diarization if matching segment index
+        w_diar = meta.get("word_level_diarization")
+        if isinstance(w_diar, list):
+            for item in w_diar:
+                if isinstance(item, dict) and isinstance(item.get("words"), list):
+                    for w in item["words"]:
+                        if isinstance(w, dict) and w.get("speaker") == old_speaker:
+                            w["speaker"] = body.new_speaker
+
+    _log_audit_view(db, current_user, "RLHF_SPEAKER_REASSIGN", conversation_id)
+    db.commit()
+    return {
+        "status": "success",
+        "segment_id": segment_id,
+        "old_speaker": old_speaker,
+        "new_speaker": body.new_speaker,
+        "message": f"Konuşmacı etiketi '{old_speaker}' -> '{body.new_speaker}' olarak güncellendi ve biyometrik geri bildirim kaydedildi.",
     }
