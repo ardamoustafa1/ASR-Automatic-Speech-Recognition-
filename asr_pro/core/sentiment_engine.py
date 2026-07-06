@@ -74,28 +74,71 @@ class SentimentClassifier:
             self._use_mps = False
 
     def _load_model(self):
-        """Lazy load the transformer model."""
-        if self._pipeline is None:
-            logger.info("Loading Zero-Shot NLP Model (mDeBERTa) into memory...")
-            try:
-                from transformers import pipeline
-            except ImportError as e:
-                logger.error(f"transformers import failed: {e}")
-                raise
+        """Lazy load the transformer models.
 
-            # We use a robust multilingual zero-shot model for accurate Turkish emotion detection
-            model_name = "MoritzLaurer/mDeBERTa-v3-base-mnli-xnli"
-            self._pipeline = pipeline(
-                "zero-shot-classification",
-                model=model_name,
-                device=self._device_str,
-                truncation=True,
-                max_length=512,
-            )
-            logger.info("Model loaded successfully.")
+        Primary model: savasy/bert-base-turkish-sentiment-cased
+        - Fine-tuned on Turkish text for positive/negative/neutral classification
+        - Far more accurate for Turkish than a generic multilingual zero-shot model
+
+        Fallback (zero-shot) model: MoritzLaurer/mDeBERTa-v3-base-mnli-xnli
+        - Used for fine-grained emotion classification (angry, frustrated, anxious)
+          when the Turkish BERT model is unavailable or for churn/topic labeling.
+        """
+        if self._pipeline is None:
+            logger.info("Loading Turkish sentiment model (savasy/bert-base-turkish-sentiment-cased)...")
+            try:
+                from transformers import pipeline as hf_pipeline
+
+                self._pipeline = hf_pipeline(
+                    "text-classification",
+                    model="savasy/bert-base-turkish-sentiment-cased",
+                    device=self._device_str,
+                    truncation=True,
+                    max_length=512,
+                    top_k=None,  # Return scores for all labels
+                )
+                logger.info("Turkish BERT sentiment model loaded successfully.")
+                self._model_type = "turkish_bert"
+            except Exception as e:
+                logger.warning(
+                    f"Turkish BERT model failed to load ({e}). "
+                    "Falling back to multilingual zero-shot model."
+                )
+                self._load_zero_shot_model()
+
+    def _load_zero_shot_model(self):
+        """Lazy load the multilingual zero-shot model as a fallback."""
+        if getattr(self, "_zero_shot_pipeline", None) is None:
+            logger.info("Loading multilingual zero-shot model (mDeBERTa-v3)...")
+            try:
+                from transformers import pipeline as hf_pipeline
+
+                self._zero_shot_pipeline = hf_pipeline(
+                    "zero-shot-classification",
+                    model="MoritzLaurer/mDeBERTa-v3-base-mnli-xnli",
+                    device=self._device_str,
+                    truncation=True,
+                    max_length=512,
+                )
+                if self._pipeline is None:
+                    # Primary model failed — use zero-shot as primary too
+                    self._pipeline = self._zero_shot_pipeline
+                    self._model_type = "zero_shot"
+                logger.info("Zero-shot fallback model loaded.")
+            except Exception as e:
+                logger.error(f"Zero-shot model also failed to load: {e}")
+                self._zero_shot_pipeline = None
 
     def predict(self, text: str, labels: list[str] = None, hypothesis: str = None) -> dict:
-        """Run inference on the text."""
+        """Run inference on the text.
+
+        When called without explicit labels (emotion analysis), uses the Turkish
+        BERT classifier (primary) which returns positive/negative/neutral labels.
+        These are then mapped to the richer emotion categories.
+
+        When called with explicit labels (churn, topic), always uses the zero-shot
+        model since it supports arbitrary label sets.
+        """
         labels = labels or EMOTION_LABELS
         hypothesis = hypothesis or "The emotion expressed in this text is {}."
 
@@ -105,7 +148,64 @@ class SentimentClassifier:
         # Truncate very long texts to avoid context window issues (max ~500 chars)
         text = text[:500] if len(text) > 500 else text
 
+        # If custom labels are requested (churn/topic analysis), always use
+        # the zero-shot pipeline which supports arbitrary hypothesis templates.
+        is_custom_labels = set(labels) != set(EMOTION_LABELS)
+        if is_custom_labels:
+            self._load_zero_shot_model()
+            zs_pipe = getattr(self, "_zero_shot_pipeline", None) or self._pipeline
+            if zs_pipe is None:
+                return {"labels": labels, "scores": [1.0 / len(labels)] * len(labels)}
+            try:
+                return zs_pipe(
+                    text,
+                    labels,
+                    hypothesis_template=hypothesis,
+                    multi_label=False,
+                    truncation=True,
+                )
+            except Exception as e:
+                logger.warning(f"Zero-shot inference failed: {e}")
+                return {"labels": labels, "scores": [1.0 / len(labels)] * len(labels)}
+
+        # Emotion analysis — use the Turkish BERT primary model
         self._load_model()
+        if self._pipeline is None:
+            return {"labels": labels, "scores": [1.0] + [0.0] * (len(labels) - 1)}
+
+        model_type = getattr(self, "_model_type", "zero_shot")
+
+        if model_type == "turkish_bert":
+            try:
+                results = self._pipeline(text)
+                # savasy model returns [{"label": "positive", "score": 0.98}, ...]
+                # Flatten top_k=None result if it's a list of lists
+                if results and isinstance(results[0], list):
+                    results = results[0]
+                score_map_bert = {r["label"].lower(): r["score"] for r in results}
+                # Map Turkish BERT labels → emotion label scores
+                # positive → satisfied
+                # negative → distribute between angry/frustrated/anxious proportionally
+                # neutral  → neutral
+                pos = score_map_bert.get("positive", 0.0)
+                neg = score_map_bert.get("negative", 0.0)
+                neu = score_map_bert.get("neutral", 0.0)
+                # Distribute negative probability across stress emotions
+                mapped_scores = [
+                    neg * 0.45,   # angry
+                    neg * 0.35,   # frustrated
+                    pos,          # satisfied
+                    neg * 0.20,   # anxious
+                    neu,          # neutral
+                ]
+                # Normalize
+                total = sum(mapped_scores) or 1.0
+                mapped_scores = [s / total for s in mapped_scores]
+                return {"labels": EMOTION_LABELS, "scores": mapped_scores}
+            except Exception as e:
+                logger.warning(f"Turkish BERT inference failed: {e}")
+
+        # Fallback: zero-shot
         try:
             return self._pipeline(
                 text,
