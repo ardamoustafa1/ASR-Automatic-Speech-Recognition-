@@ -1694,3 +1694,9 @@ This log chronicles the continuous architectural evolutions, mathematical modeli
 - **Architectural Note:** Verified execution stability, memory efficiency, and telecom compliance for `enforce Agent Speech Exclusion Guard to eliminate false positive churn alerts on tariff explanations`.
 - **Verification:** Tested against automated CI/CD benchmarks and zero-regression suites.
 
+## ADR-283: Apply 0.10x lexical damping factor to neutral customer statements and routine inquiries
+- **Timestamp:** Iteration cycle 283
+- **Domain:** `feat(churn)`
+- **Architectural Note:** Verified execution stability, memory efficiency, and telecom compliance for `apply 0.10x lexical damping factor to neutral customer statements and routine inquiries`.
+- **Verification:** Tested against automated CI/CD benchmarks and zero-regression suites.
+
