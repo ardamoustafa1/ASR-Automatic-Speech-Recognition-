@@ -93,3 +93,57 @@ def test_ai_confidence_gate():
     violations_no_ai = analyze_compliance_risk(segments, domain_key="finance", use_ai=False)
     assert len(violations_no_ai) > 0
     assert violations_no_ai[0].severity == "CRITICAL"
+
+
+def test_customer_speech_excluded_when_agent_id_provided():
+    """Regulatory obligations apply to the AGENT, not the customer - a customer
+    quoting/asking about a red-flag phrase must not be scored as a violation
+    when agent_speaker_id is supplied to isolate the check."""
+    segments = [
+        SegmentInput(
+            start=0.0,
+            end=3.0,
+            text="Bana kredi kartı şifremi mi soracaksınız şimdi?",
+            segment_index=0,
+            speaker="SPEAKER_00",  # customer
+        ),
+        SegmentInput(
+            start=3.0,
+            end=6.0,
+            text="Hayır efendim, asla şifrenizi sormayız.",
+            segment_index=1,
+            speaker="SPEAKER_01",  # agent
+        ),
+    ]
+
+    violations = analyze_compliance_risk(
+        segments, domain_key="finance", use_ai=False, agent_speaker_id="SPEAKER_01"
+    )
+
+    assert len(violations) == 0
+
+
+def test_agent_violation_still_caught_with_speaker_filter():
+    segments = [
+        SegmentInput(
+            start=0.0,
+            end=3.0,
+            text="Merhaba, nasıl yardımcı olabilirim?",
+            segment_index=0,
+            speaker="SPEAKER_01",  # agent
+        ),
+        SegmentInput(
+            start=3.0,
+            end=6.0,
+            text="Kredi kart şifrenizi bana okur musunuz?",
+            segment_index=1,
+            speaker="SPEAKER_01",  # agent
+        ),
+    ]
+
+    violations = analyze_compliance_risk(
+        segments, domain_key="finance", use_ai=False, agent_speaker_id="SPEAKER_01"
+    )
+
+    assert len(violations) == 1
+    assert "Veri Gizliliği" in violations[0].category
