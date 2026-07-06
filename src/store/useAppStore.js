@@ -4,6 +4,10 @@ export const useAppStore = create((set) => ({
   isAuthenticated: false,
   setIsAuthenticated: (status) => set({ isAuthenticated: status }),
 
+  // Current user's identity/role/team, populated from GET /auth/me after login.
+  user: null,
+  setUser: (user) => set({ user }),
+
   sidebarOpen: true,
   setSidebarOpen: (isOpen) => set({ sidebarOpen: isOpen }),
 
