@@ -1,7 +1,7 @@
 # --- ASR YAPILANDIRMA ---
 from dataclasses import dataclass
 
-DEFAULT_MODEL_SIZE = "turbo"
+DEFAULT_MODEL_SIZE = "large"
 
 MODEL_NAME_MAP = {
     "turbo": "large-v3-turbo",
@@ -505,6 +505,9 @@ class TranscriptSegment:
     compression_ratio: float = 1.0
     raw_text: str = ""
     speaker: str | None = None
+    words: Any = None
+    is_interruption: bool = False
+    auto_corrected: bool = False
 
 
 @dataclass(frozen=True)
