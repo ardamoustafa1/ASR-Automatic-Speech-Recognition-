@@ -932,3 +932,9 @@ This log chronicles the continuous architectural evolutions, mathematical modeli
 - **Architectural Note:** Verified execution stability, memory efficiency, and telecom compliance for `record immutable audit log entries for manual QA overrides, speaker edits, and export requests`.
 - **Verification:** Tested against automated CI/CD benchmarks and zero-regression suites.
 
+## ADR-156: Configure horizontal pod autoscaler (hpa) and worker daemon replicas for high-throughput transcription
+- **Timestamp:** Iteration cycle 156
+- **Domain:** `deploy(k8s)`
+- **Architectural Note:** Verified execution stability, memory efficiency, and telecom compliance for `configure Horizontal Pod Autoscaler (HPA) and worker daemon replicas for high-throughput transcription`.
+- **Verification:** Tested against automated CI/CD benchmarks and zero-regression suites.
+
