@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 
+from asr_pro.config import settings
 from asr_pro.core.keyword_engine import SegmentInput
 from asr_pro.core.sentiment_engine import SentimentClassifier
 
@@ -102,6 +103,7 @@ def analyze_soft_skills(
 
     last_speaker = None
     last_end_time = 0.0
+    last_segment_duration = 0.0
     last_customer_was_angry = False
 
     # Müşteriyi tespit et (Eğer agent ID yoksa, SPEAKER_00 genelde müşteri, SPEAKER_01 temsilci kabul edilir)
@@ -123,10 +125,24 @@ def analyze_soft_skills(
             is_agent = True
 
         # 1. AKUSTİK SÖZ KESME (INTERRUPTION) ANALİZİ
+        # Stereo çağrılarda sol/sağ kanal BİRBİRİNDEN BAĞIMSIZ transkript edilir
+        # (her kanalın kendi VAD'i var, ortak zaman referansı yok) - bu yüzden
+        # ardışık segment sınırlarında gerçek bir söz kesme olmadan da bindirme
+        # görülebilir. İki farklı gürültü türü var: (a) alt-saniye sınır
+        # titremesi, (b) bazen segment bitiş zaman damgası tamamen bozuk olup
+        # 5-11 saniyelik "bindirme" üretebiliyor - hiçbir insan 11 saniye
+        # boyunca sözünü kesemez, bu bir zaman damgası hatasıdır, gerçek bir
+        # kesme değil. Bu yüzden hem alt hem üst sınır uyguluyoruz; kesilen
+        # segment de tek kelimelik bir onay ("evet"/"tamam") olmamalı.
         if seg.speaker and last_speaker and seg.speaker != last_speaker:
-            # Overlap toleransı: 0.2 saniye. Eğer daha fazla iç içe geçmişlerse söz kesmedir!
             overlap = last_end_time - seg.start
-            if overlap > 0.2 and is_agent:
+            if (
+                settings.empathy_interruption_min_overlap_sec
+                < overlap
+                <= settings.empathy_interruption_max_overlap_sec
+                and last_segment_duration >= settings.empathy_interruption_min_prior_segment_sec
+                and is_agent
+            ):
                 interruption_count += 1
 
         # 2. MÜŞTERİ DUYGU DURUMU (Kriz Yönetimi İçin)
@@ -191,6 +207,7 @@ def analyze_soft_skills(
 
         # Güncellemeler
         last_speaker = seg.speaker
+        last_segment_duration = max(0.0, seg.end - seg.start)
         last_end_time = max(last_end_time, seg.end)
 
     # --- SKOR HESAPLAMA MANTIĞI (Apple / Goldman Sachs Standartları) ---
@@ -202,7 +219,12 @@ def analyze_soft_skills(
 
     penalty_defensive = min(40, len(defensive_hits) * 20)
     penalty_wpm = min(20, high_wpm_segments * 5)
-    penalty_interruption = min(30, interruption_count * 15)  # Söz kesmek çok büyük cezadır
+    # Even after filtering cross-channel timestamp noise (above), a real call
+    # can still show a couple of genuine short talk-overs without that being
+    # "constant interruption" - saturating the max penalty at just 2 treated
+    # a mildly impatient agent identically to a constantly-interrupting one.
+    # Needs ~4 to reach the same max penalty now.
+    penalty_interruption = min(30, interruption_count * 8)
 
     bonus_crisis = min(30, crisis_bonus_pts)
 
