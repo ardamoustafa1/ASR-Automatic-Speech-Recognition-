@@ -52,3 +52,33 @@ def test_sanitize_text():
     assert ASRService._sanitize_text("Efendim? Efendim?") == "Efendim?"
     assert ASRService._sanitize_text("evet evet evet") == "evet"
     assert ASRService._sanitize_text("normal cümle burada.") == "normal cümle burada."
+
+
+@patch("asr_pro.services.asr_service.ASRService._is_stereo_file", return_value=True)
+@patch("faster_whisper.decode_audio")
+def test_transcribe_stereo(mock_decode, mock_is_stereo):
+    import numpy as np
+    from asr_pro.services.asr_service import TranscriptionSegment
+
+    mock_decode.return_value = (np.ones(1600, dtype=np.float32), np.ones(1600, dtype=np.float32))
+
+    svc = ASRService()
+    svc._model = MagicMock()
+    svc._is_mlx = False
+
+    call_count = [0]
+    def mock_single_ch(audio, language="tr"):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return [TranscriptionSegment(start=0.0, end=1.0, text="Merhaba agent")], 1.0
+        return [TranscriptionSegment(start=0.5, end=1.5, text="Merhaba customer")], 1.5
+
+    with patch.object(svc, "_transcribe_single_channel", side_effect=mock_single_ch):
+        segments, duration = svc.transcribe("stereo.wav")
+        assert len(segments) == 2
+        assert segments[0].speaker == "SPEAKER_00"
+        assert segments[0].text == "Merhaba agent"
+        assert segments[1].speaker == "SPEAKER_01"
+        assert segments[1].text == "Merhaba customer"
+        assert duration == 1.5
+
