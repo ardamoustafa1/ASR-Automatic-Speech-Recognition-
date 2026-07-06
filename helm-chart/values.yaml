@@ -17,6 +17,26 @@ secrets:
   jwtKey: ""
   adminPassword: ""
 
+# Runs asr_pro.worker: consumes the RQ "asr-pro" queue for audio transcription/NLP
+# jobs so this heavy CPU work scales independently of the request-serving api pods.
+worker:
+  enabled: true
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 3000m
+      memory: 6Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    # CPU-based scaling is a reasonable default; for scaling on actual queue
+    # backlog instead, consider KEDA with a Redis list-length trigger.
+    targetCPUUtilizationPercentage: 75
+
 resources:
   requests:
     cpu: 500m
