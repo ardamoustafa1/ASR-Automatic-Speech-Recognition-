@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { Bell, CheckCircle2, RefreshCw } from "lucide-react";
 import { api } from "../api/client";
+import { useAppStore } from "../store/useAppStore";
 
 export default function AlertsPage() {
+  const isAdmin = useAppStore((state) => state.user?.role === "admin");
   const [events, setEvents] = useState([]);
   const [rules, setRules] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,9 +39,11 @@ export default function AlertsPage() {
           <h1>Uyarı Merkezi</h1>
           <p>Trend eşiklerine göre otomatik raporlar</p>
         </div>
-        <button className="btn-secondary" onClick={evaluate}>
-          <RefreshCw size={16} /> Uyarıları Değerlendir
-        </button>
+        {isAdmin && (
+          <button className="btn-secondary" onClick={evaluate}>
+            <RefreshCw size={16} /> Uyarıları Değerlendir
+          </button>
+        )}
       </header>
 
       <div className="alerts-grid">
@@ -67,9 +71,11 @@ export default function AlertsPage() {
                   {e.payload?.pct_change != null && (
                     <span className="trend-badge danger">+{e.payload.pct_change}%</span>
                   )}
-                  <button className="btn-secondary sm" onClick={() => ack(e.id)}>
-                    <CheckCircle2 size={14} /> Okundu
-                  </button>
+                  {isAdmin && (
+                    <button className="btn-secondary sm" onClick={() => ack(e.id)}>
+                      <CheckCircle2 size={14} /> Okundu
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
