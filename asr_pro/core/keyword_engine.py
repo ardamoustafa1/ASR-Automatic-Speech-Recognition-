@@ -42,6 +42,13 @@ class SegmentInput:
     text: str
     speaker: str | None = None
     segment_index: int = 0
+    # -1.0 = not available. Carried through diarization re-alignment so
+    # transcript UIs can flag low-confidence (likely hallucinated or
+    # crosstalk-affected) lines after speaker assignment, not just before it.
+    avg_logprob: float = -1.0
+    words: Any = None
+    is_interruption: bool = False
+    auto_corrected: bool = False
 
 
 @dataclass(frozen=True)
