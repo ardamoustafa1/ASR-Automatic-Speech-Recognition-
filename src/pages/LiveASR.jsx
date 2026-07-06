@@ -52,18 +52,25 @@ function ScoreBadge({ label, value, icon: Icon, color }) {
 
 export default function LiveASRPage() {
   const [isRecording, setIsRecording] = useState(false);
-  const [transcript, setTranscript] = useState("");
+  // committedText: server-confirmed (final) transcript, persisted to DB.
+  // partialText: tentative, not-yet-committed tail — re-transcribed and replaced on every update.
+  const [committedText, setCommittedText] = useState("");
+  const [partialText, setPartialText] = useState("");
   const [wsStatus, setWsStatus] = useState(WS_STATUS.DISCONNECTED);
   const [latencyMs, setLatencyMs] = useState(null);
+  const [coachingAlert, setCoachingAlert] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [isMockMode, setIsMockMode] = useState(false);
+  const [wsError, setWsError] = useState(null);
   const mockIntervalRef = useRef(null);
 
   const mediaRecorderRef = useRef(null);
   const wsRef = useRef(null);
   const streamRef = useRef(null);
-  const transcriptRef = useRef("");
+  const committedTextRef = useRef("");
+
+  const transcript = (committedText + (partialText ? " " + partialText : "")).trim();
 
   const stopMockMode = () => {
     if (mockIntervalRef.current) clearInterval(mockIntervalRef.current);
@@ -111,6 +118,7 @@ export default function LiveASRPage() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       setWsStatus(WS_STATUS.CONNECTING);
+      setWsError(null);
 
       const ws = new WebSocket(`${wsBase}/ws/live-asr`);
       wsRef.current = ws;
@@ -118,6 +126,10 @@ export default function LiveASRPage() {
 
       ws.onmessage = async (event) => {
         const msg = JSON.parse(event.data);
+
+        if (msg.coaching_alert) {
+          setCoachingAlert(msg.coaching_alert);
+        }
 
         // ── Auth challenge-response (secure: token never in URL) ──────────────
         if (msg.type === "auth_required") {
@@ -129,19 +141,37 @@ export default function LiveASRPage() {
         if (msg.type === "auth_ok") {
           setWsStatus(WS_STATUS.CONNECTED);
           setIsRecording(true);
-          setTranscript("");
+          setCommittedText("");
+          setPartialText("");
           setAnalysis(null);
-          transcriptRef.current = "";
+          setCoachingAlert(null);
+          setWsError(null);
+          committedTextRef.current = "";
           startMediaRecorder(stream, ws);
           return;
         }
 
-        if (msg.type === "transcript" && msg.status === "success") {
-          setTranscript(msg.transcript);
+        if (msg.type === "partial") {
+          setPartialText(msg.text ?? "");
           setLatencyMs(msg.latency_ms ?? null);
-          transcriptRef.current = msg.transcript;
-          // Trigger analysis on every new full transcript
-          analyzeTranscript(msg.transcript);
+          return;
+        }
+
+        if (msg.type === "final") {
+          const fullText = msg.transcript_so_far ?? committedTextRef.current;
+          committedTextRef.current = fullText;
+          setCommittedText(fullText);
+          setPartialText("");
+          setLatencyMs(msg.latency_ms ?? null);
+          // NLP analysis only runs on committed (final) text to avoid redundant
+          // load and flicker while a partial hypothesis is still in flux.
+          analyzeTranscript(fullText);
+          return;
+        }
+
+        if (msg.type === "error") {
+          setWsError(msg.message || "Ses akışı işlenirken bir hata oluştu.");
+          return;
         }
       };
 
@@ -153,6 +183,7 @@ export default function LiveASRPage() {
       ws.onerror = () => {
         setWsStatus(WS_STATUS.DISCONNECTED);
         setIsRecording(false);
+        setWsError("Bağlantı hatası oluştu.");
       };
     } catch (err) {
       console.error("Microphone error:", err);
@@ -169,10 +200,12 @@ export default function LiveASRPage() {
   const startMockMode = () => {
     setWsStatus(WS_STATUS.CONNECTED);
     setIsRecording(true);
-    setTranscript("");
+    setCommittedText("");
+    setPartialText("");
     setAnalysis(null);
-    transcriptRef.current = "";
-    
+    setWsError(null);
+    committedTextRef.current = "";
+
     const mockPhrases = [
       "Merhaba, kolay gelsin. ",
       "Kredi kartı ekstremdeki bir işleme itiraz etmek istiyorum. ",
@@ -181,13 +214,13 @@ export default function LiveASRPage() {
       "Aksi takdirde kartımı kapatacağım."
     ];
     let currentIndex = 0;
-    
+
     mockIntervalRef.current = setInterval(() => {
       if (currentIndex < mockPhrases.length) {
-        transcriptRef.current += mockPhrases[currentIndex];
-        setTranscript(transcriptRef.current);
+        committedTextRef.current += mockPhrases[currentIndex];
+        setCommittedText(committedTextRef.current);
         setLatencyMs(Math.floor(Math.random() * 200) + 100);
-        analyzeTranscript(transcriptRef.current);
+        analyzeTranscript(committedTextRef.current);
         currentIndex++;
       } else {
         stopMockMode();
@@ -222,6 +255,26 @@ export default function LiveASRPage() {
         <h1>Canlı Analiz (Live ASR)</h1>
         <p>Mikrofon sesini gerçek zamanlı metne çevirin ve anlık NLP analizi yapın.</p>
       </header>
+
+      {wsError && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            background: "rgba(239,68,68,0.1)",
+            border: "1px solid rgba(239,68,68,0.3)",
+            borderRadius: "8px",
+            padding: "0.6rem 0.9rem",
+            marginBottom: "1rem",
+            color: "var(--asr-danger)",
+            fontSize: "0.85rem",
+          }}
+        >
+          <AlertTriangle size={16} />
+          <span>{wsError}</span>
+        </div>
+      )}
 
       <div className="main-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
         {/* ── Left: Controls ─────────────────────────────────────────────── */}
@@ -309,6 +362,61 @@ export default function LiveASRPage() {
               </span>
             </div>
           </div>
+
+          {/* Real-Time AI Coaching Banner */}
+          {coachingAlert && (
+            <div
+              style={{
+                marginBottom: "1.25rem",
+                padding: "1rem 1.15rem",
+                borderRadius: "10px",
+                background:
+                  coachingAlert.severity === "high"
+                    ? "rgba(239, 68, 68, 0.15)"
+                    : coachingAlert.severity === "warning"
+                      ? "rgba(245, 158, 11, 0.15)"
+                      : "rgba(59, 130, 246, 0.15)",
+                borderLeft: `5px solid ${
+                  coachingAlert.severity === "high"
+                    ? "var(--asr-danger)"
+                    : coachingAlert.severity === "warning"
+                      ? "var(--asr-warning)"
+                      : "var(--asr-accent)"
+                }`,
+                color: "var(--asr-fg)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.35rem",
+                boxShadow: "0 4px 15px rgba(0,0,0,0.15)",
+                animation: "fadeIn 0.3s ease",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  fontWeight: 700,
+                  fontSize: "0.95rem",
+                  color:
+                    coachingAlert.severity === "high"
+                      ? "var(--asr-danger)"
+                      : coachingAlert.severity === "warning"
+                        ? "var(--asr-warning)"
+                        : "var(--asr-accent)",
+                }}
+              >
+                <Activity size={18} />
+                <span>{coachingAlert.title}</span>
+                <span style={{ marginLeft: "auto", fontSize: "0.75rem", opacity: 0.8 }}>
+                  {coachingAlert.timestamp_sec}s
+                </span>
+              </div>
+              <div style={{ fontSize: "0.88rem", lineHeight: 1.4, opacity: 0.95 }}>
+                {coachingAlert.message}
+              </div>
+            </div>
+          )}
 
           {/* Real-time analysis scores */}
           {(analysis || analyzing) && (
@@ -398,7 +506,13 @@ export default function LiveASRPage() {
                   whiteSpace: "pre-wrap",
                 }}
               >
-                {transcript}
+                {committedText}
+                {partialText && (
+                  <span style={{ color: "var(--asr-muted)", fontStyle: "italic" }}>
+                    {committedText ? " " : ""}
+                    {partialText}
+                  </span>
+                )}
               </p>
             ) : (
               <div className="empty-state">
@@ -433,9 +547,10 @@ export default function LiveASRPage() {
               <button
                 className="btn-secondary"
                 onClick={() => {
-                  setTranscript("");
+                  setCommittedText("");
+                  setPartialText("");
                   setAnalysis(null);
-                  transcriptRef.current = "";
+                  committedTextRef.current = "";
                 }}
                 style={{ fontSize: "0.8rem", padding: "0.4rem 0.8rem", display: "flex", alignItems: "center", gap: "0.5rem" }}
               >
