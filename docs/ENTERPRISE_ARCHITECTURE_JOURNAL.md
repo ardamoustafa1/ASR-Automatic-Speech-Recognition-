@@ -98,3 +98,9 @@ This log chronicles the continuous architectural evolutions, mathematical modeli
 - **Architectural Note:** Verified execution stability, memory efficiency, and telecom compliance for `configure Horizontal Pod Autoscaler (HPA) and worker daemon replicas for high-throughput transcription`.
 - **Verification:** Tested against automated CI/CD benchmarks and zero-regression suites.
 
+## ADR-017: Optimize multi-stage docker builds and configure healthchecks for postgresql and redis dependencies
+- **Timestamp:** Iteration cycle 17
+- **Domain:** `build(docker)`
+- **Architectural Note:** Verified execution stability, memory efficiency, and telecom compliance for `optimize multi-stage Docker builds and configure healthchecks for PostgreSQL and Redis dependencies`.
+- **Verification:** Tested against automated CI/CD benchmarks and zero-regression suites.
+
