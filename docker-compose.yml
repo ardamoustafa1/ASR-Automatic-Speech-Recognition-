@@ -30,7 +30,7 @@ services:
       - ASR_DATABASE_URL=postgresql://${POSTGRES_USER:-asr_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-asr_pro}
       - ASR_CORS_ORIGINS=${ASR_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
       - ASR_ADMIN_PASSWORD=${ASR_ADMIN_PASSWORD:?ASR_ADMIN_PASSWORD must be set in .env}
-      - ASR_REDIS_URL=${ASR_REDIS_URL:-}
+      - ASR_REDIS_URL=${ASR_REDIS_URL:-redis://redis:6379/0}
       - ASR_WEBHOOK_URL=${ASR_WEBHOOK_URL:-}
     depends_on:
       db:
@@ -93,6 +93,70 @@ services:
     restart: unless-stopped
     profiles:
       - with-redis
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    volumes:
+      - ./asr_pro:/app/asr_pro
+      - ./data:/app/data
+      - ./temp_audio_uploads:/app/temp_audio_uploads
+    environment:
+      - ASR_JWT_SECRET_KEY=${ASR_JWT_SECRET_KEY:?ASR_JWT_SECRET_KEY must be set in .env}
+      - ASR_DATABASE_URL=postgresql://${POSTGRES_USER:-asr_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-asr_pro}
+      - ASR_ADMIN_PASSWORD=${ASR_ADMIN_PASSWORD:?ASR_ADMIN_PASSWORD must be set in .env}
+      - ASR_REDIS_URL=redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: python -m asr_pro.worker
+    restart: unless-stopped
+    profiles:
+      - with-redis
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - with-observability
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./deploy/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    restart: unless-stopped
+    profiles:
+      - with-observability
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    profiles:
+      - with-observability
 
 volumes:
   postgres_data:
