@@ -1940,3 +1940,9 @@ This log chronicles the continuous architectural evolutions, mathematical modeli
 - **Architectural Note:** Verified execution stability, memory efficiency, and telecom compliance for `apply 0.10x lexical damping factor to neutral customer statements and routine inquiries`.
 - **Verification:** Tested against automated CI/CD benchmarks and zero-regression suites.
 
+## ADR-324: Integrate damerau-levenshtein distance algorithm for robust competitor ner under asr typos
+- **Timestamp:** Iteration cycle 324
+- **Domain:** `feat(churn)`
+- **Architectural Note:** Verified execution stability, memory efficiency, and telecom compliance for `integrate Damerau-Levenshtein distance algorithm for robust competitor NER under ASR typos`.
+- **Verification:** Tested against automated CI/CD benchmarks and zero-regression suites.
+
