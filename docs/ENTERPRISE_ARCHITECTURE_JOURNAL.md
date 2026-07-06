@@ -1106,3 +1106,9 @@ This log chronicles the continuous architectural evolutions, mathematical modeli
 - **Architectural Note:** Verified execution stability, memory efficiency, and telecom compliance for `integrate Damerau-Levenshtein distance algorithm for robust competitor NER under ASR typos`.
 - **Verification:** Tested against automated CI/CD benchmarks and zero-regression suites.
 
+## ADR-185: Implement numeric currency ner extraction to capture exact tl amounts and price objections
+- **Timestamp:** Iteration cycle 185
+- **Domain:** `feat(churn)`
+- **Architectural Note:** Verified execution stability, memory efficiency, and telecom compliance for `implement numeric currency NER extraction to capture exact TL amounts and price objections`.
+- **Verification:** Tested against automated CI/CD benchmarks and zero-regression suites.
+
