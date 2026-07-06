@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Plus, Trash2, FlaskConical } from "lucide-react";
 import { api, severityColor } from "../api/client";
+import { useAppStore } from "../store/useAppStore";
 
 const EMPTY_RULE = {
   name: "",
@@ -12,6 +13,7 @@ const EMPTY_RULE = {
 };
 
 export default function KeywordsPage() {
+  const isAdmin = useAppStore((state) => state.user?.role === "admin");
   const [rules, setRules] = useState([]);
   const [topics, setTopics] = useState([]);
   const [form, setForm] = useState(null);
@@ -65,9 +67,11 @@ export default function KeywordsPage() {
           <h1>Kelime & Konu Kuralları</h1>
           <p>Anahtar kelime eşleştirme kurallarını yönetin</p>
         </div>
-        <button className="btn-primary" onClick={() => setForm({ ...EMPTY_RULE })}>
-          <Plus size={16} /> Yeni Kural
-        </button>
+        {isAdmin && (
+          <button className="btn-primary" onClick={() => setForm({ ...EMPTY_RULE })}>
+            <Plus size={16} /> Yeni Kural
+          </button>
+        )}
       </header>
 
       <div className="rules-grid">
@@ -92,20 +96,22 @@ export default function KeywordsPage() {
                 {rule.is_active ? "Aktif" : "Pasif"}
               </span>
             </div>
-            <div className="rule-actions">
-              <button className="btn-secondary sm" onClick={() => setForm({ ...rule })}>
-                Düzenle
-              </button>
-              <button
-                className="btn-secondary sm danger"
-                onClick={async () => {
-                  await api.deleteRule(rule.id);
-                  load();
-                }}
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
+            {isAdmin && (
+              <div className="rule-actions">
+                <button className="btn-secondary sm" onClick={() => setForm({ ...rule })}>
+                  Düzenle
+                </button>
+                <button
+                  className="btn-secondary sm danger"
+                  onClick={async () => {
+                    await api.deleteRule(rule.id);
+                    load();
+                  }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>
