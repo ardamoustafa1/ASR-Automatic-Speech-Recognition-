@@ -1,0 +1,45 @@
+{{- if .Values.worker.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "asr-pro.fullname" . }}-worker
+  labels:
+    app.kubernetes.io/name: {{ include "asr-pro.name" . }}-worker
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  {{- if not .Values.worker.autoscaling.enabled }}
+  replicas: {{ .Values.worker.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "asr-pro.name" . }}-worker
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "asr-pro.name" . }}-worker
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}-worker
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "asr_pro.worker"]
+          env:
+            - name: ASR_DATABASE_URL
+              value: {{ .Values.env.databaseUrl | quote }}
+            - name: ASR_REDIS_URL
+              value: {{ .Values.env.redisUrl | quote }}
+            - name: ASR_JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "asr-pro.fullname" . }}-secrets
+                  key: jwt-secret
+            - name: ASR_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "asr-pro.fullname" . }}-secrets
+                  key: admin-password
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+{{- end }}
