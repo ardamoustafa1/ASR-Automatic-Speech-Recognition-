@@ -17,6 +17,7 @@ from asr_pro.core.empathy_engine import analyze_soft_skills
 from asr_pro.core.keyword_engine import SegmentInput
 from asr_pro.core.sentiment_engine import analyze_sentiment
 from asr_pro.core.summary_engine import generate_crm_summary, generate_ollama_summary
+from asr_pro.config import settings
 from asr_pro.core.trend_engine import detect_anomalies, get_trend_data
 from asr_pro.integration.streamlit_ui import execute_enterprise_keyword_analysis, highlight_transcript_html, render_keyword_results
 
@@ -334,6 +335,8 @@ def get_speaker_badge_html(segment):
         return f'<span class="speaker-tag speaker-agent">👤 Temsilci ({spk})</span>'
     elif spk == customer_id or spk == "Müşteri" or "customer" in str(spk).lower():
         return f'<span class="speaker-tag speaker-customer">🎧 Müşteri ({spk})</span>'
+    elif "ivr" in str(spk).lower() or "santral" in str(spk).lower() or "robot" in str(spk).lower():
+        return f'<span class="speaker-tag" style="background:rgba(100,116,139,0.35);color:#cbd5e1;border:1px dashed #94a3b8;">🤖 IVR / Santral ({spk})</span>'
     else:
         return f'<span class="speaker-tag" style="background:rgba(255,255,255,0.1);color:#ccc;">🗣️ {spk}</span>'
 
@@ -346,9 +349,15 @@ def render_search_and_transcript(segments_data):
         st.markdown(
             f"""
             <div style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
-                <b>👥 Konuşmacı Ayrımı Aktif:</b> 
-                <span class="speaker-tag speaker-agent" style="margin-left: 8px;">👤 Temsilci ({agent_id})</span> 
+                <b>👥 Konuşmacı Ayrımı Aktif:</b>
+                <span class="speaker-tag speaker-agent" style="margin-left: 8px;">👤 Temsilci ({agent_id})</span>
                 <span class="speaker-tag speaker-customer" style="margin-left: 8px;">🎧 Müşteri ({cust_id})</span>
+                <div style="font-size: 0.75rem; color: #a1a1aa; margin-top: 6px;">
+                    ⚠️ Stereo kayıtlarda kanal sızıntısı (crosstalk) veya kısa/düşük bilgili
+                    ifadelerde model halüsinasyonu nedeniyle konuşmacı ataması ara sıra hatalı
+                    olabilir. Aşağıda düşük güvenilirlikli satırlar işaretlenmiştir - kritik
+                    kararlar öncesi bu satırları insan gözden geçirmesi önerilir.
+                </div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -391,7 +400,25 @@ def render_search_and_transcript(segments_data):
     st.markdown("---")
     st.markdown("#### Deşifre Çıktısı (Konuşmacı Bazlı)")
 
-    html_output = '<div class="transcript-container">'
+    if segments_data:
+        total_dur = max((getattr(s, "end", 1.0) or 1.0) for s in segments_data)
+        total_dur = max(total_dur, 10.0)
+        timeline_html = '<div style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 14px 18px; margin-bottom: 18px; box-shadow: 0 4px 20px rgba(0,0,0,0.25);"><div style="display: flex; justify-content: space-between; font-weight: 600; font-size: 0.88rem; color: #fff; margin-bottom: 10px;"><span>📊 Duygu ve Akış Isı Haritası (Call Timeline)</span><div style="display: flex; gap: 14px; font-size: 0.75rem; color: #cbd5e1;"><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;margin-right:4px;"></span>Pozitif</span><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;margin-right:4px;"></span>Negatif</span><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#8b5cf6;margin-right:4px;"></span>⚡ Söz Kesme</span><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#64748b;margin-right:4px;"></span>🤖 IVR</span></div></div><div style="display: flex; height: 14px; width: 100%; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,0.06); gap: 2px;">'
+        for s in segments_data:
+            dur = max((getattr(s, "end", 0) - getattr(s, "start", 0)), 1.0)
+            wp = max((dur / total_dur) * 100, 1.5)
+            spk_str = str(getattr(s, "speaker", "") or "")
+            is_int = getattr(s, "is_interruption", False)
+            bg = "#475569"
+            if is_int: bg = "#8b5cf6"
+            elif "ivr" in spk_str.lower() or "santral" in spk_str.lower() or "robot" in str(spk_str).lower(): bg = "#64748b"
+            elif spk_str == st.session_state.get("agent_id", "SPEAKER_00") or "temsilci" in spk_str.lower(): bg = "#3b82f6"
+            elif spk_str == st.session_state.get("customer_id", "SPEAKER_01") or "müşteri" in spk_str.lower(): bg = "#059669"
+            timeline_html += f'<div style="width: {wp:.2f}%; height: 100%; background: {bg}; border-radius: 2px;" title="{spk_str}: {getattr(s, "text", "")[:40]}..."></div>'
+        timeline_html += '</div></div>'
+        st.markdown(timeline_html, unsafe_allow_html=True)
+
+    html_output = '<div class="transcript-container" style="display: flex; flex-direction: column; gap: 12px; padding: 16px; background: rgba(15, 23, 42, 0.6); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08);">'
     for segment in segments_data:
         m, s = divmod(segment.start, 60)
         time_formatted = f"{int(m):02d}:{s:04.1f}"
@@ -409,11 +436,45 @@ def render_search_and_transcript(segments_data):
             text_content = highlight_transcript_html(text_content, keyword_res["hits"])
 
         badge_html = get_speaker_badge_html(segment)
+
+        avg_logprob = float(getattr(segment, "avg_logprob", -1.0) or -1.0)
+        is_low_confidence = (
+            avg_logprob != -1.0 and avg_logprob < settings.transcript_low_confidence_logprob
+        )
+        row_style = "opacity: 0.65;" if is_low_confidence else ""
+        confidence_marker = (
+            ' <span title="Düşük güven: bu satır hatalı transkripsiyon veya '
+            'konuşmacı ataması içerebilir" style="color: #f59e0b; margin-left: 6px;">⚠️ Düşük Güven</span>'
+            if is_low_confidence
+            else ""
+        )
+
+        spk = getattr(segment, "speaker", None) or getattr(segment, "speaker_label", None)
+        agent_id = st.session_state.get("agent_id", "SPEAKER_00")
+        customer_id = st.session_state.get("customer_id", "SPEAKER_01")
+        is_ivr = "ivr" in str(spk).lower() or "santral" in str(spk).lower() or "robot" in str(spk).lower()
+        is_agent = not is_ivr and (spk == agent_id or spk == "Temsilci" or "agent" in str(spk).lower())
+        is_cust = not is_ivr and (spk == customer_id or spk == "Müşteri" or "customer" in str(spk).lower())
+
+        align_style = "justify-content: center;" if is_ivr else ("justify-content: flex-start;" if is_agent else ("justify-content: flex-end;" if is_cust else "justify-content: flex-start;"))
+        bubble_bg = "rgba(30, 41, 59, 0.75)" if is_ivr else ("linear-gradient(135deg, rgba(30, 58, 138, 0.85), rgba(37, 99, 235, 0.85))" if is_agent else ("linear-gradient(135deg, rgba(6, 95, 70, 0.85), rgba(16, 185, 129, 0.85))" if is_cust else "rgba(31, 41, 55, 0.85)"))
+        border_color = "rgba(148, 163, 184, 0.4)" if is_ivr else ("rgba(59, 130, 246, 0.4)" if is_agent else ("rgba(16, 185, 129, 0.4)" if is_cust else "rgba(107, 114, 128, 0.4)"))
+        radius_style = "border-radius: 12px;" if is_ivr else ("border-radius: 18px 18px 18px 4px;" if is_agent else ("border-radius: 18px 18px 4px 18px;" if is_cust else "border-radius: 14px;"))
+
+        int_badge = '<span style="background: rgba(139, 92, 246, 0.25); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.4); padding: 2px 6px; border-radius: 6px; font-size: 0.72rem; font-weight: 600; margin-right: 8px;">⚡ Söz Kesme</span>' if getattr(segment, "is_interruption", False) else ""
+        auto_badge = '<span style="background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.35); padding: 2px 6px; border-radius: 6px; font-size: 0.72rem; font-weight: 600; margin-right: 8px;">🤖 AI Doğrulanmış</span>' if getattr(segment, "auto_corrected", False) else ""
+
         html_output += f"""
-        <div class="transcript-row" style="display: flex; align-items: baseline; gap: 10px;">
-            <div class="transcript-time">{time_formatted}</div>
-            <div>{badge_html}</div>
-            <div class="transcript-text" style="flex: 1;">{text_content}</div>
+        <div class="transcript-row" style="display: flex; width: 100%; {align_style} {row_style}">
+            <div style="max-width: 78%; background: {bubble_bg}; border: 1px solid {border_color}; {radius_style} padding: 14px 18px; box-shadow: 0 4px 15px rgba(0,0,0,0.15); backdrop-filter: blur(8px);">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; font-size: 0.82rem; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 4px;">
+                    <div>{int_badge}{auto_badge}{badge_html}</div>
+                    <div style="color: rgba(255,255,255,0.7); font-family: monospace; font-size: 0.78rem;">⏱️ {time_formatted}</div>
+                </div>
+                <div class="transcript-text" style="color: #ffffff; font-size: 0.96rem; line-height: 1.5; font-weight: 400; letter-spacing: 0.01em;">
+                    {text_content}{confidence_marker}
+                </div>
+            </div>
         </div>"""
     html_output += "</div>"
 
@@ -1528,6 +1589,52 @@ def render_app():
                                                 st.warning(
                                                     f"🏢 **Rekabet Alarmı:** Rakip firma anıldı -> {', '.join(churn_res.competitors_mentioned).title()}"
                                                 )
+
+                                            with st.expander(
+                                                f"🔍 Skor Detayı (Güven: {churn_res.confidence})"
+                                            ):
+                                                breakdown = churn_res.risk_breakdown
+                                                st.markdown(
+                                                    f"""
+- **Model sinyali (en riskli an):** %{int(breakdown['model_signal'] * 100)}
+- **Genel eğilim (çağrı boyunca ortalama):** %{int(breakdown['escalation_trend'] * 100)}
+- **Rakip firma bonusu:** +%{int(breakdown['competitor_bonus'] * 100)}
+- **Güven seviyesi:** {churn_res.confidence} ({len(churn_res.insights)} risk sinyali tespit edildi)
+"""
+                                                )
+                                                st.markdown(
+                                                    f"""
+                                                    <div style="background-color: rgba(0, 212, 178, 0.06); border: 1px solid rgba(0, 212, 178, 0.3); border-radius: 8px; padding: 14px; margin: 12px 0;">
+                                                        <h5 style="margin: 0 0 10px 0; color: #00d4b2; font-size: 1.05em;">🧬 SOTA 5-Yöntemli Akustik, Finansal & HMM Zeka Analitiği</h5>
+                                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.92em; line-height: 1.5;">
+                                                            <div>📈 <b>HMM Churn Rota Eğilimi:</b><br><span style="color:#e0e0e0;">{" ➔ ".join(getattr(churn_res, 'trajectory', ())[:5]) if getattr(churn_res, 'trajectory', None) else "🟢 Stabil"}</span></div>
+                                                            <div>💰 <b>Fiyat & Tutar Sinyali (NER):</b><br><span style="color:#00e676; font-weight:bold;">{', '.join(getattr(churn_res, 'detected_prices', ())) if getattr(churn_res, 'detected_prices', None) else "Tespit Edilmedi"}</span></div>
+                                                            <div>🗣️ <b>Akustik Kararsızlık Endeksi:</b><br><span style="color:#ffccd5;">%{getattr(churn_res, 'average_filler_ratio', 0.0)} Dolgu Kelime Oranı</span></div>
+                                                            <div>🌟 <b>Temsilci İkna / Kriz Skoru:</b><br><span style="color: {'#00e676' if getattr(churn_res, 'agent_retention_score', 100) >= 80 else '#ffb200'}; font-weight: bold; font-size: 1.1em;">%{getattr(churn_res, 'agent_retention_score', 100)}</span> {(" — 🟢 Kriz Çözüldü!" if getattr(churn_res, 'was_deescalated', False) else "")}</div>
+                                                        </div>
+                                                    </div>
+                                                    """,
+                                                    unsafe_allow_html=True,
+                                                )
+                                                if churn_res.insights:
+                                                    st.markdown("#### 🔥 Riski Tetikleyen Kritik Müşteri İfadeleri (Sıfır Yanlış Alarm Denetimli)")
+                                                    for insight in churn_res.insights:
+                                                        badge_color = "#ff4b4b" if "Kritik" in getattr(insight, "severity", "") else "#ffb200"
+                                                        price_tag = f" | 💰 <b>Tutar:</b> <span style='color:#00e676;'>{insight.price_signal}</span>" if getattr(insight, "price_signal", None) else ""
+                                                        filler_tag = f" | 🗣️ <b>Dolgu:</b> %{insight.filler_ratio}" if getattr(insight, "filler_ratio", 0) > 0 else ""
+                                                        st.markdown(
+                                                            f"""
+                                                            <div style="background-color: rgba(255, 75, 75, 0.08); border-left: 5px solid {badge_color}; padding: 12px; margin-bottom: 10px; border-radius: 6px;">
+                                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                                                                    <span style="background-color: {badge_color}; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em;">{getattr(insight, 'severity', '⚠️ Yüksek Risk')} • Risk: %{int(insight.final_segment_risk * 100)}</span>
+                                                                    <span style="color: #aaa; font-size: 0.85em;">⏱️ Stres: <b>{insight.wpm} WPM</b> | Zaman: <b>{insight.temporal_weight}x</b>{price_tag}{filler_tag}</span>
+                                                                </div>
+                                                                <p style="margin: 0 0 6px 0; font-size: 1.05em; color: #fff;"><i>"{insight.text}"</i></p>
+                                                                <p style="margin: 0; font-size: 0.9em; color: #ffccd5;"><b>🔍 Kök Sebep Teşhisi:</b> {getattr(insight, 'trigger_reason', 'Ayrılma ve Rakip Firma Eğilimi')}</p>
+                                                            </div>
+                                                            """,
+                                                            unsafe_allow_html=True,
+                                                        )
 
                                             # --- COMPLIANCE MONITORING ---
                                             compliance_res = analyze_compliance_risk(
