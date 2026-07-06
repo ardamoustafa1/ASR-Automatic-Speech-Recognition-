@@ -38,6 +38,7 @@ class Token(BaseModel):
 class User(BaseModel):
     username: str
     role: str
+    team: Optional[str] = None
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -100,7 +101,16 @@ async def logout():
     return response
 
 
-async def get_current_user(request: Request, asr_token: Optional[str] = Cookie(None)):
+async def get_current_user(
+    request: Request, asr_token: Optional[str] = Cookie(None), db: Session = Depends(get_db)
+):
+    """Resolve the authenticated user from the JWT, then re-check their *current*
+    role/active status against the database on every request.
+
+    The JWT's own `role` claim is intentionally ignored beyond identifying the
+    username: a token issued before a role downgrade or account deactivation
+    must not keep granting the old privileges for the rest of its 24h lifetime.
+    """
     token = asr_token
     if not token:
         auth_header = request.headers.get("Authorization")
@@ -118,12 +128,15 @@ async def get_current_user(request: Request, asr_token: Optional[str] = Cookie(N
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
-        role: str = payload.get("role")
         if username is None:
             raise credentials_exception
-        return User(username=username, role=role)
     except jwt.PyJWTError as err:
         raise credentials_exception from err
+
+    db_user = db.query(DBUser).filter(DBUser.username == username).first()
+    if db_user is None or not db_user.is_active:
+        raise credentials_exception
+    return User(username=db_user.username, role=db_user.role, team=db_user.team)
 
 
 @router.get("/auth/me", response_model=User)
