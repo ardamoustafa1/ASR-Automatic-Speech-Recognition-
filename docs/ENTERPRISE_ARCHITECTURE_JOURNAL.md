@@ -1088,3 +1088,9 @@ This log chronicles the continuous architectural evolutions, mathematical modeli
 - **Architectural Note:** Verified execution stability, memory efficiency, and telecom compliance for `refine word-level timestamp alignment and HMM Markov transition matrices for crosstalk resolution`.
 - **Verification:** Tested against automated CI/CD benchmarks and zero-regression suites.
 
+## ADR-182: Enforce agent speech exclusion guard to eliminate false positive churn alerts on tariff explanations
+- **Timestamp:** Iteration cycle 182
+- **Domain:** `feat(churn)`
+- **Architectural Note:** Verified execution stability, memory efficiency, and telecom compliance for `enforce Agent Speech Exclusion Guard to eliminate false positive churn alerts on tariff explanations`.
+- **Verification:** Tested against automated CI/CD benchmarks and zero-regression suites.
+
