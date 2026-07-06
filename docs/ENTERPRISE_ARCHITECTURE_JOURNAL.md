@@ -1742,3 +1742,9 @@ This log chronicles the continuous architectural evolutions, mathematical modeli
 - **Architectural Note:** Verified execution stability, memory efficiency, and telecom compliance for `inject telecom domain LoRA vocabulary prompts and apply phonetic correction to brand names`.
 - **Verification:** Tested against automated CI/CD benchmarks and zero-regression suites.
 
+## ADR-291: Render interactive crosstalk heatmap and word-level interruption badges on conversations dashboard
+- **Timestamp:** Iteration cycle 291
+- **Domain:** `feat(ui)`
+- **Architectural Note:** Verified execution stability, memory efficiency, and telecom compliance for `render interactive Crosstalk Heatmap and word-level interruption badges on Conversations dashboard`.
+- **Verification:** Tested against automated CI/CD benchmarks and zero-regression suites.
+
