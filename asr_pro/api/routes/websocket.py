@@ -5,10 +5,24 @@ from typing import Optional
 
 Security: JWT is validated from the FIRST WebSocket message (not the URL query string),
 preventing tokens from appearing in browser history, proxy logs, or server access logs.
+
+Protocol:
+  1. Client connects (no token in URL).
+  2. Server sends: {"type": "auth_required"}
+  3. Client sends JSON: {"type": "auth", "token": "<jwt>"}
+  4. Server validates token.
+     - On success: {"type": "auth_ok"}
+     - On failure: close with code 1008 (Policy Violation)
+  5. Client streams binary WebM/Opus audio chunks.
+  6. Server incrementally decodes + transcribes and replies with:
+     - {"type": "partial", "text": ..., "segments": [...]}   — tentative, not persisted
+     - {"type": "final", "text": ..., "segments": [...], "transcript_so_far": ...} — committed + persisted
+     - {"type": "error", "message": ...} — decode/transcription failure, connection is closed after
+  Server never re-transcribes audio it has already committed as final: only the bounded
+  pending window is re-run on each new chunk, and VAD-detected speech pauses (or a max
+  pending-window timeout) trigger a commit.
 """
 import asyncio
-import os
-import tempfile
 import time
 
 import jwt
@@ -16,12 +30,16 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from loguru import logger
 
 from asr_pro.api.routes.auth import ALGORITHM, SECRET_KEY
-from asr_pro.services.asr_service import ASRService
-from asr_pro.services.vad_service import VADService
+from asr_pro.config import MAX_WS_CONNECTIONS
+from asr_pro.db.models import Conversation, TranscriptSegmentRow
+from asr_pro.db.session import SessionLocal
+from asr_pro.observability.metrics import ws_active_connections, ws_messages_total
+from asr_pro.services.audio_stream_decoder import AudioDecodeError
+from asr_pro.services.streaming_session import StreamingASRSession
 
 router = APIRouter(tags=["live-asr"])
 
-MIN_CHUNK_SIZE = 64 * 1024  # 64 KB — avoids O(n²) re-transcription on every tiny packet
+_active_connections = 0
 
 
 def _validate_token(token: str) -> Optional[dict]:
@@ -32,115 +50,174 @@ def _validate_token(token: str) -> Optional[dict]:
         return None
 
 
+def _create_conversation_sync(agent_id: str) -> str:
+    db = SessionLocal()
+    try:
+        conv = Conversation(agent_id=agent_id, sector="omni")
+        db.add(conv)
+        db.commit()
+        db.refresh(conv)
+        return conv.id
+    finally:
+        db.close()
+
+
+def _persist_final_sync(conversation_id: str, segments: list, transcript_so_far: str) -> None:
+    db = SessionLocal()
+    try:
+        for seg in segments:
+            db.add(
+                TranscriptSegmentRow(
+                    conversation_id=conversation_id,
+                    start=seg["start"],
+                    end=seg["end"],
+                    text=seg["text"],
+                    speaker=seg.get("speaker"),
+                )
+            )
+        conv = db.get(Conversation, conversation_id)
+        if conv is not None:
+            conv.full_transcript = transcript_so_far
+        db.commit()
+    finally:
+        db.close()
+
+
+def _finalize_conversation_sync(conversation_id: str, duration_sec: float) -> None:
+    db = SessionLocal()
+    try:
+        conv = db.get(Conversation, conversation_id)
+        if conv is not None:
+            conv.duration_sec = round(duration_sec, 2)
+        db.commit()
+    finally:
+        db.close()
+
+
 @router.websocket("/ws/live-asr")
 async def websocket_asr_endpoint(websocket: WebSocket):
-    """
-    Live ASR WebSocket endpoint.
-
-    Protocol:
-      1. Client connects (no token in URL).
-      2. Server sends: {"type": "auth_required"}
-      3. Client sends JSON: {"type": "auth", "token": "<jwt>"}
-      4. Server validates token.
-         - On success: {"type": "auth_ok"}
-         - On failure: close with code 1008 (Policy Violation)
-      5. Client streams binary audio chunks.
-      6. Server responds with transcription JSON after each chunk batch.
-    """
+    global _active_connections
     await websocket.accept()
+
+    if _active_connections >= MAX_WS_CONNECTIONS:
+        await websocket.close(code=1013, reason="Server busy, try again later")
+        return
+    _active_connections += 1
+    ws_active_connections.inc()
 
     # ── Step 1: Challenge ──────────────────────────────────────────────────────
     await websocket.send_json({"type": "auth_required"})
 
-    # ── Step 2: Receive auth message ──────────────────────────────────────────
+    username = "unknown"
+    session: Optional[StreamingASRSession] = None
+    conversation_id: Optional[str] = None
     try:
-        auth_msg = await asyncio.wait_for(websocket.receive_json(), timeout=10.0)
-    except (asyncio.TimeoutError, Exception):
-        await websocket.close(code=1008, reason="Authentication timeout")
-        return
+        # ── Step 2: Receive auth message ──────────────────────────────────────
+        try:
+            auth_msg = await asyncio.wait_for(websocket.receive_json(), timeout=10.0)
+        except (asyncio.TimeoutError, Exception):
+            await websocket.close(code=1008, reason="Authentication timeout")
+            return
 
-    if auth_msg.get("type") != "auth" or not auth_msg.get("token"):
-        await websocket.close(code=1008, reason="Invalid auth message")
-        return
+        if auth_msg.get("type") != "auth" or not auth_msg.get("token"):
+            await websocket.close(code=1008, reason="Invalid auth message")
+            return
 
-    payload = _validate_token(auth_msg["token"])
-    if payload is None:
-        await websocket.close(code=1008, reason="Invalid or expired token")
-        return
+        payload = _validate_token(auth_msg["token"])
+        if payload is None:
+            await websocket.close(code=1008, reason="Invalid or expired token")
+            return
 
-    username = payload.get("sub", "unknown")
-    logger.info(f"WS Live-ASR: user '{username}' authenticated.")
-    await websocket.send_json({"type": "auth_ok", "user": username})
+        username = payload.get("sub", "unknown")
+        logger.info(f"WS Live-ASR: user '{username}' authenticated.")
+        await websocket.send_json({"type": "auth_ok", "user": username})
 
-    # ── Step 3: Prepare ASR ───────────────────────────────────────────────────
-    asr = ASRService.get_instance()
-    asr.load_model("turbo")
-
-    temp_file_path: Optional[str] = None
-    try:
-        fd, temp_file_path = tempfile.mkstemp(suffix=".webm")
-        os.close(fd)
-
-        chunk_buffer = b""
+        # ── Step 3: Prepare streaming session ──────────────────────────────────
+        session = StreamingASRSession(language="tr")
+        await session.start()
+        conversation_id = await asyncio.to_thread(_create_conversation_sync, username)
         session_start = time.monotonic()
 
         while True:
             data = await websocket.receive_bytes()
-            chunk_buffer += data
 
-            # Wait until we have a meaningful audio batch before transcribing
-            if len(chunk_buffer) < MIN_CHUNK_SIZE:
-                continue
-
-            # Check Voice Activity Detection (VAD) to skip silence and boost performance by ~40%
-            if not VADService.get_instance().is_speech(chunk_buffer):
-                logger.debug("WS: silence detected by Silero VAD, skipping Whisper transcription.")
-                chunk_buffer = b""
-                continue
-
-            with open(temp_file_path, "ab") as f:
-                f.write(chunk_buffer)
-            chunk_buffer = b""
-
+            t0 = time.monotonic()
             try:
-                t0 = time.monotonic()
-                segments, duration = await asyncio.to_thread(asr.transcribe, temp_file_path)
-                latency_ms = int((time.monotonic() - t0) * 1000)
-                elapsed = time.monotonic() - session_start
-
-                current_text = " ".join(s.text for s in segments)
+                message = await session.push_audio(data)
+            except AudioDecodeError as exc:
+                logger.warning(f"WS Live-ASR audio decode error for '{username}': {exc}")
+                ws_messages_total.labels(type="error").inc()
                 await websocket.send_json(
-                    {
-                        "type": "transcript",
-                        "status": "success",
-                        "transcript": current_text,
-                        "duration": round(duration, 2),
-                        "session_elapsed": round(elapsed, 1),
-                        "latency_ms": latency_ms,
-                        "segments": [
-                            {"start": s.start, "end": s.end, "text": s.text} for s in segments
-                        ],
-                    }
+                    {"type": "error", "message": "Audio stream could not be decoded."}
                 )
-                logger.debug(f"WS: transcribed {len(segments)} segs in {latency_ms}ms")
-
+                break
             except Exception as exc:
                 logger.warning(f"WS transcription chunk error: {exc}")
                 await websocket.send_json(
-                    {
-                        "type": "warning",
-                        "status": "warning",
-                        "message": f"Chunk transcription failed: {str(exc)}",
-                    }
+                    {"type": "warning", "status": "warning", "message": f"Chunk transcription failed: {exc}"}
                 )
+                continue
+
+            if message is None:
+                continue
+
+            latency_ms = int((time.monotonic() - t0) * 1000)
+            elapsed = time.monotonic() - session_start
+            message["latency_ms"] = latency_ms
+            message["session_elapsed"] = round(elapsed, 1)
+
+            if message["type"] in ("partial", "final"):
+                from asr_pro.services.live_coaching_service import LiveCoachingService
+                chunk_text = message.get("text", "") or message.get("transcript_so_far", "")
+                alert = LiveCoachingService.evaluate_chunk(
+                    session_id=conversation_id,
+                    text=chunk_text,
+                    latency_ms=latency_ms,
+                    session_elapsed=elapsed,
+                )
+                if alert:
+                    message["coaching_alert"] = alert
+
+            ws_messages_total.labels(type=message["type"]).inc()
+            await websocket.send_json(message)
+
+            if message["type"] == "final":
+                await asyncio.to_thread(
+                    _persist_final_sync,
+                    conversation_id,
+                    message["segments"],
+                    message["transcript_so_far"],
+                )
+                logger.debug(f"WS: committed final segment for '{username}' in {latency_ms}ms")
 
     except WebSocketDisconnect:
         logger.info(f"WS Live-ASR: user '{username}' disconnected.")
     except Exception as exc:
         logger.error(f"WS Live-ASR unexpected error: {exc}")
     finally:
-        if temp_file_path and os.path.exists(temp_file_path):
+        _active_connections -= 1
+        ws_active_connections.dec()
+        if session is not None:
             try:
-                os.remove(temp_file_path)
-            except OSError:
+                final_message = await session.flush_final()
+                if final_message is not None and conversation_id is not None:
+                    ws_messages_total.labels(type="final_flush").inc()
+                    await asyncio.to_thread(
+                        _persist_final_sync,
+                        conversation_id,
+                        final_message["segments"],
+                        final_message["transcript_so_far"],
+                    )
+            except Exception as exc:
+                logger.warning(f"WS Live-ASR: flush_final failed for '{username}': {exc}")
+            if conversation_id is not None:
+                try:
+                    await asyncio.to_thread(
+                        _finalize_conversation_sync, conversation_id, session.committed_offset_sec
+                    )
+                except Exception as exc:
+                    logger.warning(f"WS Live-ASR: finalize conversation failed: {exc}")
+            try:
+                await session.close()
+            except Exception:
                 pass
