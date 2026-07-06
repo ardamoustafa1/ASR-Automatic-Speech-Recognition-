@@ -20,6 +20,8 @@ from sqlalchemy.orm import Session
 
 from asr_pro.config import CORS_ORIGINS, TEMP_AUDIO_DIR
 from asr_pro.db.models import AuditLog
+from asr_pro.db.models import User as DBUser
+from asr_pro.observability.metrics import audit_log_write_failures_total
 
 trace_id_var: ContextVar[str] = ContextVar("trace_id", default="")
 
@@ -45,11 +47,13 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from asr_pro.api.deps import get_db, limiter
 from asr_pro.api.routes.alerts import router as alerts_router
 from asr_pro.api.routes.analytics import router as analytics_router
+from asr_pro.api.routes.audit import router as audit_router
 from asr_pro.api.routes.auth import router as auth_router
 from asr_pro.api.routes.conversations import router as conversations_router
 from asr_pro.api.routes.keywords import router as keywords_router
 from asr_pro.api.routes.keywords import topics_router
 from asr_pro.api.routes.websocket import router as websocket_router
+from asr_pro.api.routes.agents import router as agents_router
 from asr_pro.db.session import SessionLocal, init_db
 from asr_pro.services.seed_data import seed_defaults
 
@@ -125,11 +129,18 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 from starlette.background import BackgroundTask
 
 
-def write_audit_log(user_id, method, path, ip, status_code):
+def write_audit_log(username, method, path, ip, status_code):
     db = SessionLocal()
     try:
+        # Resolve the real user UUID for the FK; `username` is stored regardless
+        # so the trail stays readable even if the account is later deleted.
+        user_id = None
+        if username:
+            db_user = db.query(DBUser).filter(DBUser.username == username).first()
+            user_id = db_user.id if db_user else None
         audit = AuditLog(
             user_id=user_id,
+            username=username,
             action=method,
             target_resource=path,
             ip_address=ip,
@@ -138,6 +149,7 @@ def write_audit_log(user_id, method, path, ip, status_code):
         db.add(audit)
         db.commit()
     except Exception as e:
+        audit_log_write_failures_total.inc()
         logger.error(f"Failed to create audit log: {e}")
     finally:
         db.close()
@@ -152,7 +164,7 @@ async def audit_log_middleware(request: Request, call_next):
         response = await call_next(request)
         ip = request.client.host if request.client else "unknown"
         # Get user from jwt token if present
-        user_id = None
+        username = None
         auth = request.headers.get("Authorization", "")
         if auth.startswith("Bearer "):
             import jwt
@@ -161,13 +173,13 @@ async def audit_log_middleware(request: Request, call_next):
 
             try:
                 payload = jwt.decode(auth.split(" ")[1], JWT_SECRET_KEY, algorithms=["HS256"])
-                user_id = payload.get("sub")
+                username = payload.get("sub")
             except Exception:
                 pass
 
         response.background = BackgroundTask(
             write_audit_log,
-            user_id=user_id,
+            username=username,
             method=request.method,
             path=request.url.path,
             ip=ip,
@@ -227,6 +239,8 @@ app.include_router(topics_router, prefix="/api/v1", dependencies=[Depends(get_cu
 app.include_router(conversations_router, prefix="/api/v1", dependencies=[Depends(get_current_user)])
 app.include_router(analytics_router, prefix="/api/v1", dependencies=[Depends(get_current_user)])
 app.include_router(alerts_router, prefix="/api/v1", dependencies=[Depends(get_current_user)])
+app.include_router(audit_router, prefix="/api/v1", dependencies=[Depends(get_current_user)])
+app.include_router(agents_router, prefix="/api/v1", dependencies=[Depends(get_current_user)])
 app.include_router(websocket_router)
 
 
