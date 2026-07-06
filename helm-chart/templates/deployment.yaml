@@ -6,7 +6,9 @@ metadata:
     app.kubernetes.io/name: {{ include "asr-pro.name" . }}
     app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
+  {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "asr-pro.name" . }}
@@ -38,6 +40,8 @@ spec:
                 secretKeyRef:
                   name: {{ include "asr-pro.fullname" . }}-secrets
                   key: admin-password
+            - name: ASR_REDIS_URL
+              value: {{ .Values.env.redisUrl | quote }}
           readinessProbe:
             httpGet:
               path: /api/v1/health
