@@ -51,6 +51,11 @@ export const api = {
   topKeywords: (window = "7d") => request(`/analytics/top-keywords?window=${window}`),
   conversations: (limit = 50) => request(`/conversations?limit=${limit}`),
   conversation: (id) => request(`/conversations/${id}`),
+  reassignSpeaker: (conversationId, segmentId, newSpeaker) =>
+    request(`/conversations/${conversationId}/segments/${segmentId}/reassign`, {
+      method: "POST",
+      body: JSON.stringify({ new_speaker: newSpeaker }),
+    }),
   analyze: (body) =>
     request("/conversations/analyze", { method: "POST", body: JSON.stringify(body) }),
   analyzeText: (text, sector = "omni") =>
@@ -84,6 +89,12 @@ export const api = {
     request("/alerts/rules", { method: "POST", body: JSON.stringify(body) }),
   acknowledgeAlert: (id) => request(`/alerts/${id}/acknowledge`, { method: "PATCH" }),
   evaluateAlerts: () => request("/alerts/evaluate", { method: "POST" }),
+  auditLogs: (params = {}) => {
+    const query = new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== ""))
+    );
+    return request(`/audit-logs${query.toString() ? `?${query}` : ""}`);
+  },
 };
 
 export function formatTime(seconds) {
