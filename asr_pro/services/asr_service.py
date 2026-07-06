@@ -9,7 +9,11 @@ import warnings
 from dataclasses import dataclass
 from typing import Any, Optional
 
+import numpy as np
 from loguru import logger
+
+from asr_pro.config import settings
+from asr_pro.observability.metrics import asr_transcribe_duration_seconds, time_block
 
 try:
     from faster_whisper import WhisperModel
@@ -36,7 +40,7 @@ class ASRService:
     _instance: Optional["ASRService"] = None
     _lock = threading.Lock()
     _model = None
-    _model_size = "turbo"
+    _model_size = "large-v3"
 
     @classmethod
     def get_instance(cls) -> "ASRService":
@@ -49,6 +53,11 @@ class ASRService:
     def __init__(self):
         self._device = self._choose_device()
         self._compute_type = self._choose_compute_type()
+        # Serializes calls into the underlying model: CTranslate2/mlx are not
+        # guaranteed safe for concurrent inference from multiple threads on a
+        # single model instance (relevant once live streaming sessions and
+        # batch uploads can call transcribe() at the same time).
+        self._inference_lock = threading.Lock()
 
     def _choose_device(self) -> str:
         if platform.system() == "Darwin" and platform.machine() in ["arm64", "aarch64"]:
@@ -71,7 +80,7 @@ class ASRService:
             return "float16"
         return "int8"
 
-    def load_model(self, model_size: str = "turbo") -> "WhisperModel | None":
+    def load_model(self, model_size: str = "large-v3") -> "WhisperModel | None":
         if self._model is not None and self._model_size == model_size:
             return self._model
         if getattr(self, "_is_mlx", False) and self._model_size == model_size:
@@ -169,6 +178,8 @@ class ASRService:
                 + r",}\b"
             )
             text = re.sub(pattern, r"\1", text, flags=re.IGNORECASE)
+        from asr_pro.services.domain_adaptation import DomainAdaptationService
+        text = DomainAdaptationService.correct_telecom_terms(text)
         return text.strip()
 
     @staticmethod
@@ -297,19 +308,32 @@ class ASRService:
     ) -> tuple[list[TranscriptionSegment], float]:
         """Transcribe a mono file path or 1D audio numpy array."""
         language = lock_language(language)
+        from asr_pro.services.audio_conditioning import condition_telephony_audio
+        from asr_pro.services.domain_adaptation import DomainAdaptationService
+        audio_input = condition_telephony_audio(audio_input)
+        domain_prompt = f"{settings.asr_initial_prompt or ''} {DomainAdaptationService.get_initial_prompt()}".strip()
         if self._is_mlx:
             import mlx_whisper
 
-            repo = f"mlx-community/whisper-{self._model_size}"
+            # mlx-community's repo naming isn't a uniform "whisper-{size}"
+            # pattern (e.g. large-v3 is hosted as "large-v3-mlx", not
+            # "large-v3") - translate known exceptions, otherwise mirror
+            # size unchanged (works for "turbo", "small", etc).
+            mlx_repo_overrides = {"large-v3": "large-v3-mlx"}
+            repo_size = mlx_repo_overrides.get(self._model_size, self._model_size)
+            repo = f"mlx-community/whisper-{repo_size}"
             logger.debug(f"Transcribing via MLX ({repo})...")
-            res = mlx_whisper.transcribe(
-                audio_input,
-                path_or_hf_repo=repo,
-                language=language,
-                condition_on_previous_text=False,
-                compression_ratio_threshold=2.0,
-                no_speech_threshold=0.6,
-            )
+            with self._inference_lock:
+                res = mlx_whisper.transcribe(
+                    audio_input,
+                    path_or_hf_repo=repo,
+                    language=language,
+                    condition_on_previous_text=False,
+                    initial_prompt=domain_prompt,
+                    compression_ratio_threshold=2.0,
+                    no_speech_threshold=settings.asr_no_speech_threshold,
+                    word_timestamps=True,
+                )
             segments_gen = []
             duration = 0.0
             for s in res.get("segments", []):
@@ -331,24 +355,36 @@ class ASRService:
                 duration = len(audio_input) / 16000.0
             return self._split_into_sentences(self._deduplicate_segments(segments_gen)), duration
 
-        segments_gen_fw, info = self._model.transcribe(
-            audio_input,
-            language=language,
-            beam_size=5,
-            condition_on_previous_text=False,
-            repetition_penalty=1.20,
-            no_repeat_ngram_size=3,
-            compression_ratio_threshold=2.0,
-            log_prob_threshold=-0.8,
-            no_speech_threshold=0.6,
-            vad_filter=True,
-            vad_parameters={
-                "threshold": 0.5,
-                "min_speech_duration_ms": 250,
-                "min_silence_duration_ms": 500,
-                "speech_pad_ms": 200,
-            },
+        temperature_schedule = tuple(
+            float(t.strip()) for t in settings.asr_temperature.split(",") if t.strip()
         )
+
+        with self._inference_lock:
+            segments_gen_fw, info = self._model.transcribe(
+                audio_input,
+                language=language,
+                beam_size=settings.asr_beam_size,
+                initial_prompt=domain_prompt,
+                word_timestamps=settings.asr_word_timestamps,
+                condition_on_previous_text=False,
+                repetition_penalty=1.20,
+                no_repeat_ngram_size=3,
+                compression_ratio_threshold=2.0,
+                log_prob_threshold=settings.asr_log_prob_threshold,
+                no_speech_threshold=settings.asr_no_speech_threshold,
+                temperature=temperature_schedule,
+                vad_filter=True,
+                vad_parameters={
+                    "threshold": settings.asr_vad_threshold,
+                    "min_speech_duration_ms": settings.asr_vad_min_speech_ms,
+                    "min_silence_duration_ms": settings.asr_vad_min_silence_ms,
+                    "speech_pad_ms": settings.asr_vad_speech_pad_ms,
+                },
+            )
+            # Materialize the generator while still holding the lock: faster-whisper
+            # decodes lazily as the generator is consumed, so a concurrent caller
+            # could otherwise interleave inference with this one.
+            segments_gen_fw = list(segments_gen_fw)
 
         segments = []
         for s in segments_gen_fw:
@@ -362,47 +398,104 @@ class ASRService:
                 segments.append(TranscriptionSegment(start=s.start, end=s.end, text=cleaned_text))
         return self._split_into_sentences(self._deduplicate_segments(segments)), info.duration
 
+    def _transcribe_stereo(
+        self, audio_path: str, language: str = "tr"
+    ) -> tuple[list[TranscriptionSegment], float]:
+        """Transcribe stereo audio by isolating left/right channels with post-transcription RMS bleed filtering.
+
+        Left channel is assigned to SPEAKER_00 and right channel to SPEAKER_01.
+        An acoustic RMS energy comparison filters out bleed-through after transcription so each party's words
+        are only retained on their actual physical channel.
+        """
+        from faster_whisper import decode_audio
+
+        logger.info(
+            f"ASR: Stereo audio detected for {audio_path}. Isolating channels with post-transcription RMS bleed filtering."
+        )
+        left_ch, right_ch = decode_audio(audio_path, sampling_rate=16000, split_stereo=True)
+        from asr_pro.services.audio_conditioning import condition_telephony_audio, is_ivr_segment
+        left_ch = condition_telephony_audio(left_ch)
+        right_ch = condition_telephony_audio(right_ch)
+
+        with time_block(asr_transcribe_duration_seconds, mode="batch"):
+            segs_left, dur_left = self._transcribe_single_channel(left_ch, language=language)
+            segs_right, dur_right = self._transcribe_single_channel(right_ch, language=language)
+
+        def _get_rms(channel_data: np.ndarray, start_sec: float, end_sec: float) -> float:
+            start_idx = int(start_sec * 16000)
+            end_idx = int(end_sec * 16000)
+            slice_data = channel_data[start_idx:end_idx]
+            if len(slice_data) == 0:
+                return 0.0
+            return float(np.sqrt(np.mean(slice_data**2)))
+
+        clean_left = []
+        for s in segs_left:
+            rms_l = _get_rms(left_ch, s.start, s.end)
+            rms_r = _get_rms(right_ch, s.start, s.end)
+            if rms_r > rms_l * 4.0 and rms_l < 0.015:
+                continue
+            s.speaker = "[🤖 IVR / Sistem Mesajı]" if is_ivr_segment(s.text, s.start) else "SPEAKER_00"
+            clean_left.append(s)
+
+        clean_right = []
+        for s in segs_right:
+            rms_r = _get_rms(right_ch, s.start, s.end)
+            rms_l = _get_rms(left_ch, s.start, s.end)
+            if rms_l > rms_r * 4.0 and rms_r < 0.015:
+                continue
+            s.speaker = "[🤖 IVR / Sistem Mesajı]" if is_ivr_segment(s.text, s.start) else "SPEAKER_01"
+            clean_right.append(s)
+
+        merged_segments = sorted(clean_left + clean_right, key=lambda x: (x.start, x.end))
+        duration = max(dur_left, dur_right)
+        if duration == 0.0 and len(merged_segments) > 0:
+            duration = max(s.end for s in merged_segments)
+
+        return self._split_into_sentences(self._deduplicate_segments(merged_segments)), duration
+
     def transcribe(
         self, audio_path: Any, language: str = "tr"
     ) -> tuple[list[TranscriptionSegment], float]:
         """Transcribes an audio file or numpy array using Faster-Whisper / MLX.
 
-        If a stereo file is detected, Left and Right channels are transcribed separately
-        to guarantee 100% clean speaker separation without overlapping dialog in segments.
+        Stereo files are transcribed by isolating left/right channels with DSP crosstalk suppression.
         """
         language = lock_language(language)
-        if self._model is None:
+        if self._model is None and not getattr(self, "_is_mlx", False):
             self.load_model()
 
         if isinstance(audio_path, str) and self._is_stereo_file(audio_path):
-            logger.info(
-                f"ASR: Stereo audio detected for {audio_path}. Transcribing Left and Right channels independently!"
-            )
             try:
-                from faster_whisper import decode_audio
-
-                left_ch, right_ch = decode_audio(audio_path, sampling_rate=16000, split_stereo=True)
-
-                # Transcribe Left Channel (SPEAKER_00)
-                segs_l, dur_l = self._transcribe_single_channel(left_ch, language=language)
-                for s in segs_l:
-                    s.speaker = "SPEAKER_00"
-
-                # Transcribe Right Channel (SPEAKER_01)
-                segs_r, dur_r = self._transcribe_single_channel(right_ch, language=language)
-                for s in segs_r:
-                    s.speaker = "SPEAKER_01"
-
-                combined = sorted(segs_l + segs_r, key=lambda x: x.start)
-                combined = self._deduplicate_segments(combined)
-                total_dur = max(dur_l, dur_r, 0.0)
-                logger.info(
-                    f"Stereo independent transcription complete: {len(segs_l)} left segs, {len(segs_r)} right segs, total={len(combined)}."
-                )
-                return combined, total_dur
+                return self._transcribe_stereo(audio_path, language=language)
             except Exception as exc:
                 logger.warning(
-                    f"Stereo independent transcription failed ({exc}), falling back to mono..."
+                    f"Stereo channel isolation transcription failed ({exc}), falling back to mono downmix..."
                 )
+                try:
+                    from faster_whisper import decode_audio
 
-        return self._transcribe_single_channel(audio_path, language=language)
+                    mono_audio = decode_audio(audio_path, sampling_rate=16000)
+                    with time_block(asr_transcribe_duration_seconds, mode="batch"):
+                        return self._transcribe_single_channel(mono_audio, language=language)
+                except Exception as exc2:
+                    logger.warning(f"Mono downmix fallback also failed ({exc2}), falling back to raw file...")
+
+        with time_block(asr_transcribe_duration_seconds, mode="batch"):
+            return self._transcribe_single_channel(audio_path, language=language)
+
+    def transcribe_array(
+        self, pcm: np.ndarray, language: str = "tr"
+    ) -> tuple[list[TranscriptionSegment], float]:
+        """Transcribe an in-memory mono float32 PCM array (16kHz) for live streaming sessions.
+
+        Bypasses stereo-file detection and disk I/O entirely — the caller (a
+        StreamingASRSession) is responsible for supplying a bounded, already-decoded window.
+        """
+        language = lock_language(language)
+        if self._model is None and not getattr(self, "_is_mlx", False):
+            self.load_model()
+        if pcm.size == 0:
+            return [], 0.0
+        with time_block(asr_transcribe_duration_seconds, mode="streaming"):
+            return self._transcribe_single_channel(pcm, language=language)
