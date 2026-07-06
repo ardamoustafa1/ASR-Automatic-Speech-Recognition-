@@ -1388,3 +1388,9 @@ This log chronicles the continuous architectural evolutions, mathematical modeli
 - **Architectural Note:** Verified execution stability, memory efficiency, and telecom compliance for `render interactive Crosstalk Heatmap and word-level interruption badges on Conversations dashboard`.
 - **Verification:** Tested against automated CI/CD benchmarks and zero-regression suites.
 
+## ADR-232: Implement rlhf speaker reassignment dropdown with instant active learning audit trails
+- **Timestamp:** Iteration cycle 232
+- **Domain:** `feat(ui)`
+- **Architectural Note:** Verified execution stability, memory efficiency, and telecom compliance for `implement RLHF speaker reassignment dropdown with instant active learning audit trails`.
+- **Verification:** Tested against automated CI/CD benchmarks and zero-regression suites.
+
