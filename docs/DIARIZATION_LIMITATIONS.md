@@ -37,9 +37,51 @@ Whisper's own per-segment confidence (`avg_logprob`) is surfaced directly in
 the transcript UI (dimmed text + a warning icon below the configured
 `transcript_low_confidence_logprob` threshold) so a human reviewer can spot
 the lines most likely to be wrong instead of trusting the whole transcript
-uniformly. The call-level `speaker_separation_reliable` flag
-(`asr_pro/services/conversation_service.py`) catches the coarser failure mode
-where diarization can't distinguish two speakers at all.
+uniformly.
+
+`assign_speakers_to_segments()` (`asr_pro/services/diarization_service.py`)
+now reports which method actually produced the speaker split -
+`"pyannote"` / `"stereo_physical"` (acoustically grounded) vs `"stereo_energy"`
+/ `"text_heuristic"` (degraded, no real acoustic separation). The call-level
+`speaker_separation_reliable` flag and `diarization_method` field
+(`asr_pro/services/conversation_service.py`) only mark a call reliable when
+an acoustically-grounded method produced two distinct speakers - two
+different speaker IDs alone is not sufficient, since a degraded method can
+also produce two labels with zero real acoustic signal behind them. A
+production deployment (`ASR_ENV=prod`) additionally refuses to start at all
+without a Hugging Face token (`asr_pro/config.py`), so pyannote can never
+silently degrade to a heuristic without the operator knowing.
+
+Crosstalk/interruption events (`extract_crosstalk_events`) are computed from
+pyannote's true acoustic overlap regions (`DiarizationResult.overlap_regions`,
+via the non-exclusive diarization annotation's `get_overlap()`) when
+available, instead of guessing from Whisper segment-boundary timestamps.
+
+Crosstalk windows are no longer transcribed as a single garbled/dropped
+stream: `asr_pro/services/speech_separation_service.py` (speechbrain SepFormer,
+trained on WHAMR! - noisy/reverberant conditions closer to telephony than
+clean-speech separation models) splits the overlapping window into two
+estimated per-speaker streams, and `crosstalk_resolution_service.py`
+re-transcribes each independently, attaching `separated_transcripts` to the
+event. Verified on a real 2-voice mixture: separated streams matched their
+true source at 0.73/0.53 ECAPA-TDNN cosine similarity vs 0.27/0.15
+cross-matches - real, correctly-directed (if imperfect) separation, not a
+no-op. Controlled by `crosstalk_separation_enabled` /
+`crosstalk_separation_min_duration_sec` (`asr_pro/config.py`) since it adds
+per-event latency.
+
+Diarization accuracy is measurable, not just asserted: `asr_pro/services/
+diarization_eval.py` and `scripts/evaluate_diarization.py` compute
+Diarization Error Rate (DER) against RTTM-format human-annotated reference
+calls using `pyannote.metrics`, the same metric pyannote reports for its own
+published benchmarks.
+
+Agent voice identification (`asr_pro/services/biometric_service.py`) uses a
+real learned speaker embedding (ECAPA-TDNN, speechbrain/spkrec-ecapa-voxceleb)
+rather than a hand-rolled spectral vector; every voiceprint records which
+model produced it (`embedding_model`) so mismatched-model comparisons never
+happen even if the fallback embedding is used on a machine without the
+pretrained model cached.
 
 ## Recommendation
 

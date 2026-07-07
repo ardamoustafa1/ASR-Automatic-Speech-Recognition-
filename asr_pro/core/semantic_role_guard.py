@@ -7,7 +7,9 @@ to the Agent (or an agent support script to the Customer), this guard automatica
 flips the assignment to the correct role and flags auto_corrected=True.
 Also calculates simultaneous speech (interruption) badges across segments.
 """
+
 from typing import Any
+
 from loguru import logger
 
 # Unambiguous Turkish contact center Agent phrases
@@ -104,6 +106,7 @@ def enforce_semantic_role_guard(
 
         # Update segment attributes
         import dataclasses
+
         if dataclasses.is_dataclass(seg):
             try:
                 replace_kwargs = {"speaker": new_spk}
@@ -130,18 +133,19 @@ def enforce_semantic_role_guard(
             seg["is_interruption"] = is_interrupted
         else:
             try:
-                setattr(seg, "speaker", new_spk)
+                seg.speaker = new_spk
                 if hasattr(seg, "auto_corrected"):
-                    setattr(seg, "auto_corrected", auto_corrected)
+                    seg.auto_corrected = auto_corrected
                 if hasattr(seg, "is_interruption"):
-                    setattr(seg, "is_interruption", is_interrupted)
+                    seg.is_interruption = is_interrupted
             except Exception:
                 pass
-
 
         refined.append(seg)
 
     if corrected_count > 0 or interruption_count > 0:
-        logger.info(f"SemanticRoleGuard: Auto-corrected {corrected_count} roles, detected {interruption_count} interruptions.")
+        logger.info(
+            f"SemanticRoleGuard: Auto-corrected {corrected_count} roles, detected {interruption_count} interruptions."
+        )
 
     return refined

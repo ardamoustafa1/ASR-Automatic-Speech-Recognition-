@@ -1,5 +1,6 @@
 # --- ASR YAPILANDIRMA ---
 from dataclasses import dataclass
+from typing import Any
 
 DEFAULT_MODEL_SIZE = "large"
 

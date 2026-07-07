@@ -8,7 +8,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Literal
+from typing import Any, Literal
 
 MatchType = Literal["exact", "fuzzy", "regex", "semantic", "phrase"]
 

@@ -141,9 +141,43 @@ class Settings(BaseSettings):
     # Only used as a last-resort fallback when pyannote itself is unavailable
     # (no HF token, dependency missing, runtime error).
     diarization_energy_margin: float = 1.3
+    # Calls longer than this are treated as likely multi-party (conference /
+    # supervisor transfer) rather than a plain two-party call, and get the
+    # wider `diarization_max_speakers_conference` bound instead of
+    # `diarization_max_speakers`. Only applies when diarization_expected_speakers
+    # is unset (0), since an explicit hint always wins.
+    diarization_conference_duration_sec: float = 900.0
+    # Upper bound on speaker count for calls longer than
+    # diarization_conference_duration_sec.
+    diarization_max_speakers_conference: int = 8
+    # Path to a segmentation model checkpoint fine-tuned on this deployment's
+    # own annotated call recordings (see scripts/finetune_diarization.py). If
+    # set and the file exists, DiarizationService swaps it in for the stock
+    # pyannote/segmentation-3.0 segmentation model inside the pretrained
+    # pyannote/speaker-diarization-3.1 pipeline (same embedding/clustering as
+    # the stock pipeline, only segmentation is replaced). Empty = use the
+    # stock pretrained pipeline unmodified.
+    diarization_finetuned_segmentation_path: str = ""
     # Whisper avg_logprob below this is flagged as low-confidence in the
     # transcript UI.
     transcript_low_confidence_logprob: float = -1.1
+
+    # ─── Biometric Voiceprints ─────────────────────────────────────────────────
+    # Cosine similarity threshold above which a speaker is considered matched
+    # to an enrolled agent voiceprint.
+    biometric_match_threshold: float = 0.85
+
+    # ─── Crosstalk Speech Separation ───────────────────────────────────────────
+    # Whether to run SepFormer source separation + a second Whisper pass on
+    # detected crosstalk (overlapping speech) windows, to recover both
+    # parties' words instead of one garbled/dropped transcript. Adds real
+    # latency per crosstalk event - disable for high-volume deployments where
+    # this isn't worth the added processing time.
+    crosstalk_separation_enabled: bool = True
+    # Crosstalk events shorter than this are not worth the separation +
+    # re-transcription overhead (sub-100ms boundary noise rarely carries a
+    # full word anyway).
+    crosstalk_separation_min_duration_sec: float = 0.3
 
     model_config = SettingsConfigDict(env_prefix="ASR_", env_file=".env", extra="ignore")
 
@@ -167,6 +201,18 @@ _hf_token = settings.hf_token or os.getenv("HUGGING_FACE_HUB_TOKEN") or os.geten
 if _hf_token:
     os.environ["HUGGING_FACE_HUB_TOKEN"] = _hf_token
     os.environ["HF_TOKEN"] = _hf_token
+elif os.getenv("ASR_ENV") == "prod":
+    # Without this token, DiarizationService silently degrades to text-heuristic
+    # or per-channel energy-margin diarization - neither has any real acoustic
+    # speaker separation, and both would corrupt churn/empathy/compliance
+    # scoring without necessarily failing loudly. An enterprise deployment
+    # (e.g. a large telecom contact center) must fail at startup instead of
+    # discovering this per-call in logs.
+    raise ValueError(
+        "ASR_HF_TOKEN (or HUGGING_FACE_HUB_TOKEN/HF_TOKEN) must be set in production "
+        "environment - required for pyannote.audio acoustic speaker diarization. "
+        "Without it, diarization silently degrades to unreliable heuristics."
+    )
 
 if not settings.jwt_secret_key:
     if os.getenv("ASR_ENV") == "prod":

@@ -107,8 +107,8 @@ def save_conversation_with_analysis(
 
     # 1. Perform Speaker Diarization & Role Assignment (Agent vs Customer)
     diarizer = DiarizationService.get_instance()
-    segments, agent_speaker_id, customer_speaker_id = diarizer.assign_speakers_to_segments(
-        segments_data, audio_path=audio_path
+    segments, agent_speaker_id, customer_speaker_id, diarization_method, overlap_regions = (
+        diarizer.assign_speakers_to_segments(segments_data, audio_path=audio_path)
     )
     if speakers and not agent_speaker_id:
         agent_speaker_id = speakers[0] if len(speakers) > 0 else "SPEAKER_00"
@@ -124,14 +124,26 @@ def save_conversation_with_analysis(
     # separate two speakers, so silently trusting the output would risk
     # attributing customer speech to the agent (or vice versa). Surface that
     # explicitly instead of letting it look identical to a confident result.
-    speaker_separation_reliable = bool(agent_speaker_id) and bool(customer_speaker_id) and (
-        agent_speaker_id != customer_speaker_id
+    #
+    # A distinct speaker count alone isn't enough for enterprise-grade trust:
+    # "stereo_energy" and "text_heuristic" can also produce two distinct
+    # speaker labels with zero real acoustic separation. Only "pyannote"
+    # (neural diarization) and "stereo_physical" (deterministic hardware
+    # channel separation) are acoustically grounded enough to drive
+    # churn/empathy/compliance scoring.
+    RELIABLE_METHODS = ("pyannote", "stereo_physical")
+    speaker_separation_reliable = (
+        bool(agent_speaker_id)
+        and bool(customer_speaker_id)
+        and agent_speaker_id != customer_speaker_id
+        and diarization_method in RELIABLE_METHODS
     )
     if not speaker_separation_reliable:
         logger.warning(
             "Diarization could not reliably separate agent/customer speakers "
-            f"(agent={agent_speaker_id!r}, customer={customer_speaker_id!r}). "
-            "Churn/empathy scores for this conversation may mix both parties' speech."
+            f"(agent={agent_speaker_id!r}, customer={customer_speaker_id!r}, "
+            f"method={diarization_method!r}). Churn/empathy scores for this "
+            "conversation may mix both parties' speech."
         )
 
     # 2. Analyze Keyword Rules & Topics
@@ -186,6 +198,7 @@ def save_conversation_with_analysis(
     final_metadata["agent_speaker_id"] = agent_speaker_id
     final_metadata["customer_speaker_id"] = customer_speaker_id
     final_metadata["speaker_separation_reliable"] = speaker_separation_reliable
+    final_metadata["diarization_method"] = diarization_method
     final_metadata["compliance_violations"] = [
         {
             "severity": v.severity,
@@ -201,25 +214,48 @@ def save_conversation_with_analysis(
     # 6. Compute LLM Discourse Guard (FCR, CES, Adherence) & ITU-T P.863 MOS Quality
     from asr_pro.services.llm_discourse_guard import LLMDiscourseGuard
     from asr_pro.services.mos_estimator import MOSEstimator
+
     discourse_metrics = LLMDiscourseGuard.analyze_call_metrics(segments)
-    mos_metrics = MOSEstimator.estimate_mos(audio_path) if audio_path else MOSEstimator.estimate_mos(np.array([]))
-    crosstalk_events = diarizer.extract_crosstalk_events(segments)
+    mos_metrics = (
+        MOSEstimator.estimate_mos(audio_path)
+        if audio_path
+        else MOSEstimator.estimate_mos(np.array([]))
+    )
+    crosstalk_events = diarizer.extract_crosstalk_events(segments, overlap_regions=overlap_regions)
+    if crosstalk_events and diarization_method == "pyannote" and audio_path:
+        # Only worth attempting on real acoustic overlap regions (pyannote) -
+        # degraded methods don't produce genuine overlap_regions in the first
+        # place, so there'd be nothing meaningful to separate.
+        try:
+            from asr_pro.services.crosstalk_resolution_service import resolve_crosstalk_events
+
+            crosstalk_events = resolve_crosstalk_events(audio_path, crosstalk_events)
+        except Exception as exc:
+            logger.warning(
+                f"Crosstalk speech separation failed ({exc}); leaving events unresolved."
+            )
     pitch_profiles = diarizer.extract_speaker_pitch_profiles(segments, audio_path)
-    all_spks = sorted(list({s.speaker for s in segments if s.speaker}))
-    supervisor_speaker_id = [s for s in all_spks if s not in (agent_speaker_id, customer_speaker_id)][0] if len(all_spks) > 2 else None
+    all_spks = sorted({s.speaker for s in segments if s.speaker})
+    supervisor_speaker_id = (
+        [s for s in all_spks if s not in (agent_speaker_id, customer_speaker_id)][0]
+        if len(all_spks) > 2
+        else None
+    )
     word_level_diarization = [
         {"segment_index": idx, "words": getattr(seg, "words", None)}
         for idx, seg in enumerate(segments)
         if getattr(seg, "words", None)
     ]
-    final_metadata.update({
-        "discourse_metrics": discourse_metrics,
-        "mos_metrics": mos_metrics,
-        "crosstalk_events": crosstalk_events,
-        "pitch_profiles": pitch_profiles,
-        "supervisor_speaker_id": supervisor_speaker_id,
-        "word_level_diarization": word_level_diarization,
-    })
+    final_metadata.update(
+        {
+            "discourse_metrics": discourse_metrics,
+            "mos_metrics": mos_metrics,
+            "crosstalk_events": crosstalk_events,
+            "pitch_profiles": pitch_profiles,
+            "supervisor_speaker_id": supervisor_speaker_id,
+            "word_level_diarization": word_level_diarization,
+        }
+    )
 
     conv = Conversation(
         id=new_uuid(),
@@ -293,6 +329,7 @@ def save_conversation_with_analysis(
             "agent_speaker_id": agent_speaker_id,
             "customer_speaker_id": customer_speaker_id,
             "speaker_separation_reliable": speaker_separation_reliable,
+            "method": diarization_method,
         },
         "empathy": {
             "score": empathy_result.score,
@@ -315,6 +352,8 @@ def analyze_without_save(
 ) -> list[KeywordHitResult]:
     from asr_pro.services.diarization_service import DiarizationService
 
-    segments, _, _ = DiarizationService.get_instance().assign_speakers_to_segments(segments_data)
+    segments, _, _, _, _ = DiarizationService.get_instance().assign_speakers_to_segments(
+        segments_data
+    )
     rules = rules_from_db(db, sector)
     return analyze_keywords(segments, rules, sector=sector)

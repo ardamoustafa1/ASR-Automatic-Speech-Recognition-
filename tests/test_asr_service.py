@@ -58,6 +58,7 @@ def test_sanitize_text():
 @patch("faster_whisper.decode_audio")
 def test_transcribe_stereo(mock_decode, mock_is_stereo):
     import numpy as np
+
     from asr_pro.services.asr_service import TranscriptionSegment
 
     mock_decode.return_value = (np.ones(1600, dtype=np.float32), np.ones(1600, dtype=np.float32))
@@ -67,6 +68,7 @@ def test_transcribe_stereo(mock_decode, mock_is_stereo):
     svc._is_mlx = False
 
     call_count = [0]
+
     def mock_single_ch(audio, language="tr"):
         call_count[0] += 1
         if call_count[0] == 1:
@@ -81,4 +83,3 @@ def test_transcribe_stereo(mock_decode, mock_is_stereo):
         assert segments[1].speaker == "SPEAKER_01"
         assert segments[1].text == "Merhaba customer"
         assert duration == 1.5
-

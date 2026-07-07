@@ -205,5 +205,13 @@ class AgentVoiceprint(Base):
     agent_code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     agent_name: Mapped[str] = mapped_column(String(128), index=True)
     embedding_json: Mapped[list] = mapped_column(JSON, default=list)
+    # Which embedding model produced embedding_json - "ecapa-tdnn" (speechbrain
+    # spkrec-ecapa-voxceleb, 192-dim) or "fft-legacy-v1" (raw FFT power
+    # spectrum, 128-dim, kept only as a last-resort fallback when speechbrain
+    # is unavailable). Cosine similarity across different models/dimensions is
+    # meaningless, so match_speaker only compares embeddings sharing this tag.
+    embedding_model: Mapped[str] = mapped_column(String(32), default="fft-legacy-v1")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )

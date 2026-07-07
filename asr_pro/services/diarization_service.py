@@ -34,6 +34,25 @@ class SpeakerTurn:
     speaker: str
 
 
+@dataclass
+class DiarizationResult:
+    """Result of an acoustic diarization pass, with provenance for downstream reliability gating."""
+
+    turns: list[SpeakerTurn]
+    # True acoustic overlapping-speech regions (start, end), i.e. two or more
+    # speakers active at once. Only populated when method == "pyannote" -
+    # pyannote's non-exclusive annotation encodes real overlap directly, so no
+    # timestamp-boundary guessing is needed. Empty for degraded methods.
+    overlap_regions: list[tuple[float, float]]
+    # Provenance of `turns`, used by callers (assign_speakers_to_segments,
+    # conversation_service) to decide whether speaker attribution is trustworthy
+    # enough to drive churn/empathy/compliance scoring:
+    #   "pyannote"       - neural acoustic diarization, most reliable
+    #   "stereo_energy"  - per-channel energy heuristic fallback, degraded
+    #   "none"           - no turns could be produced
+    method: str
+
+
 class DiarizationService:
     """Thread-safe Singleton for speaker diarization and role assignment."""
 
@@ -115,6 +134,7 @@ class DiarizationService:
                     logger.warning(
                         f"Could not move pyannote pipeline to {self._device_str}: {exc}. Using default device."
                     )
+            self._maybe_swap_finetuned_segmentation()
             logger.info("Speaker diarization pipeline loaded successfully.")
             return self._pipeline
         except Exception as exc:
@@ -123,6 +143,47 @@ class DiarizationService:
             )
             self._pipeline = None
             return None
+
+    def _maybe_swap_finetuned_segmentation(self) -> None:
+        """Swap in a segmentation model fine-tuned on this deployment's own data.
+
+        pyannote/speaker-diarization-3.1's embedding, clustering, and
+        instantiated hyperparameters are kept exactly as published - only the
+        segmentation sub-model is replaced, using the same construction
+        pyannote's own SpeakerDiarization.__init__ uses internally
+        (Inference wrapping the model, same duration/step/batch_size), so the
+        rest of the pipeline continues operating on a model it was tuned for.
+        See scripts/finetune_diarization.py for how this checkpoint is produced.
+        """
+        checkpoint_path = settings.diarization_finetuned_segmentation_path
+        if not checkpoint_path:
+            return
+        if not os.path.exists(checkpoint_path):
+            logger.warning(
+                f"diarization_finetuned_segmentation_path is set but does not exist: "
+                f"{checkpoint_path!r}. Using the stock pretrained pipeline."
+            )
+            return
+        try:
+            from pyannote.audio import Inference, Model
+
+            finetuned_model = Model.from_pretrained(checkpoint_path)
+            duration = finetuned_model.specifications.duration
+            self._pipeline._segmentation = Inference(
+                finetuned_model,
+                duration=duration,
+                step=self._pipeline.segmentation_step * duration,
+                skip_aggregation=True,
+                batch_size=self._pipeline.segmentation_batch_size,
+            )
+            logger.info(
+                f"Diarization: swapped in fine-tuned segmentation model from {checkpoint_path}"
+            )
+        except Exception as exc:
+            logger.error(
+                f"Diarization: failed to load fine-tuned segmentation checkpoint "
+                f"{checkpoint_path!r} ({exc}). Falling back to the stock pretrained model."
+            )
 
     @staticmethod
     def is_stereo_audio(audio_path: str | None) -> bool:
@@ -185,6 +246,41 @@ class DiarizationService:
     def diarize(self, audio_path: str) -> list[SpeakerTurn]:
         """Perform speaker diarization on an audio file and return speaker turns.
 
+        Thin backward-compatible wrapper around diarize_with_overlap() for
+        callers that only need turns, not overlap/method provenance.
+        """
+        return self.diarize_with_overlap(audio_path).turns
+
+    def _resolve_speaker_count_bounds(self, num_samples: int, sample_rate: int) -> dict[str, int]:
+        """Pick pyannote's num_speakers/min/max_speakers kwargs for this call.
+
+        An explicit diarization_expected_speakers hint always wins. Otherwise,
+        long calls (conference bridges, supervisor transfers/escalations) get
+        a wider max_speakers bound than the default two-party assumption,
+        since clamping a 5-person conference call to max_speakers=4 forces
+        pyannote to merge two real speakers into one cluster.
+        """
+        expected = settings.diarization_expected_speakers
+        if expected and expected > 0:
+            return {"num_speakers": expected}
+
+        duration_sec = num_samples / sample_rate if sample_rate else 0.0
+        max_speakers = settings.diarization_max_speakers
+        if duration_sec > settings.diarization_conference_duration_sec:
+            max_speakers = settings.diarization_max_speakers_conference
+            logger.info(
+                f"Diarization: call duration {duration_sec:.0f}s exceeds conference threshold "
+                f"({settings.diarization_conference_duration_sec:.0f}s), widening max_speakers "
+                f"bound to {max_speakers}."
+            )
+        return {
+            "min_speakers": settings.diarization_min_speakers,
+            "max_speakers": max_speakers,
+        }
+
+    def diarize_with_overlap(self, audio_path: str) -> DiarizationResult:
+        """Perform speaker diarization and report true acoustic overlap + method provenance.
+
         Always attempts the real pyannote neural diarization pipeline first,
         for mono AND stereo audio - pyannote accepts multi-channel files
         directly and downmixes internally. The per-channel energy heuristic
@@ -194,44 +290,63 @@ class DiarizationService:
         and should not be the primary path for stereo calls.
         """
         if not audio_path or not os.path.exists(audio_path):
-            return []
+            return DiarizationResult(turns=[], overlap_regions=[], method="none")
 
         pipeline = self.load_pipeline()
         if pipeline is not None:
             logger.info(f"Running acoustic speaker diarization on: {audio_path}")
             try:
-                # Use min/max_speakers bounds from config to guide pyannote's
-                # automatic speaker-count estimation. If diarization_expected_speakers
-                # is set (non-zero), pass it as num_speakers for an exact hint;
-                # otherwise let pyannote auto-detect within the min/max bounds.
-                # This prevents both under-clustering (1 speaker detected for a
-                # 2-person call) and over-clustering (background noise as a speaker).
-                expected = settings.diarization_expected_speakers
-                if expected and expected > 0:
-                    diarize_kwargs = {"num_speakers": expected}
-                else:
-                    diarize_kwargs = {
-                        "min_speakers": settings.diarization_min_speakers,
-                        "max_speakers": settings.diarization_max_speakers,
-                    }
+                import torch
 
-                result = pipeline(audio_path, **diarize_kwargs)
+                from asr_pro.services.audio_conditioning import condition_telephony_audio
+
+                # Feed pyannote the same conditioned signal (DC offset removal,
+                # telephony bandpass, RMS normalization) that Whisper transcribes,
+                # instead of the raw file - noisy telephony audio otherwise
+                # degrades embedding quality and induces false speaker splits.
+                pcm = condition_telephony_audio(audio_path, sample_rate=16000)
+                waveform = torch.from_numpy(pcm).float().unsqueeze(0)  # (1, time)
+                audio_input: Any = {"waveform": waveform, "sample_rate": 16000}
+
+                diarize_kwargs = self._resolve_speaker_count_bounds(len(pcm), 16000)
+                result = pipeline(audio_input, **diarize_kwargs)
                 # pyannote.audio >=4.0 wraps the result in a DiarizeOutput
                 # dataclass instead of returning the Annotation directly.
-                annotation = getattr(result, "exclusive_speaker_diarization", None) or getattr(
-                    result, "speaker_diarization", result
+                non_exclusive = getattr(result, "speaker_diarization", None)
+                annotation = getattr(result, "exclusive_speaker_diarization", None) or (
+                    non_exclusive if non_exclusive is not None else result
                 )
                 turns = []
                 for turn, _, speaker in annotation.itertracks(yield_label=True):
                     turns.append(
-                        SpeakerTurn(start=float(turn.start), end=float(turn.end), speaker=str(speaker))
+                        SpeakerTurn(
+                            start=float(turn.start), end=float(turn.end), speaker=str(speaker)
+                        )
                     )
+
+                # Real overlapping-speech regions come straight from pyannote's
+                # non-exclusive annotation (get_overlap() returns the Timeline
+                # of regions where 2+ speaker tracks are simultaneously active)
+                # - not a post-hoc guess based on Whisper segment boundaries.
+                overlap_regions: list[tuple[float, float]] = []
+                if non_exclusive is not None:
+                    try:
+                        for seg in non_exclusive.get_overlap():
+                            overlap_regions.append((float(seg.start), float(seg.end)))
+                    except Exception as exc:
+                        logger.debug(f"Diarization: could not extract overlap regions: {exc}")
+
                 logger.info(
-                    f"Diarization complete. Found {len(turns)} speech turns across {len({t.speaker for t in turns})} speakers."
+                    f"Diarization complete. Found {len(turns)} speech turns across "
+                    f"{len({t.speaker for t in turns})} speakers, {len(overlap_regions)} overlap regions."
                 )
-                return turns
+                return DiarizationResult(
+                    turns=turns, overlap_regions=overlap_regions, method="pyannote"
+                )
             except Exception as exc:
-                logger.error(f"Error during pyannote diarization: {exc}. Falling back to heuristics.")
+                logger.error(
+                    f"Error during pyannote diarization: {exc}. Falling back to heuristics."
+                )
 
         if self.is_stereo_audio(audio_path):
             logger.warning(
@@ -291,19 +406,29 @@ class DiarizationService:
                 logger.info(
                     f"Stereo fallback diarization complete: found {len(turns)} turns across left/right channels."
                 )
-                return turns
+                return DiarizationResult(turns=turns, overlap_regions=[], method="stereo_energy")
 
-        return []
+        return DiarizationResult(turns=[], overlap_regions=[], method="none")
 
     def assign_speakers_to_segments(
         self,
         segments_data: Sequence[Any],
         audio_path: str | None = None,
-    ) -> tuple[list[SegmentInput], str | None, str | None]:
+    ) -> tuple[list[SegmentInput], str | None, str | None, str, list[tuple[float, float]]]:
         """Align acoustic speaker turns with Whisper text segments and identify Agent vs Customer.
 
         Returns:
-            Tuple of (aligned_segments, agent_speaker_id, customer_speaker_id)
+            Tuple of (aligned_segments, agent_speaker_id, customer_speaker_id,
+            diarization_method, overlap_regions).
+            diarization_method is one of "stereo_physical" (deterministic hardware
+            channel separation), "pyannote" (neural acoustic diarization),
+            "stereo_energy" (degraded energy-margin fallback), "text_heuristic"
+            (no acoustic signal at all - pause/keyword guessing), or "none".
+            Callers should treat only "stereo_physical" and "pyannote" as
+            reliable enough to drive churn/empathy/compliance scoring.
+            overlap_regions holds real acoustic overlapping-speech (start, end)
+            spans from pyannote (empty for degraded methods) - pass it to
+            extract_crosstalk_events() for accurate crosstalk reporting.
         """
         # Convert any input format to SegmentInput
         segments: list[SegmentInput] = []
@@ -324,15 +449,21 @@ class DiarizationService:
                 )
 
         if not segments:
-            return [], None, None
+            return [], None, None, "none", []
 
         segments = self._split_into_sentences(segments)
 
         from asr_pro.services.asr_service import ASRService
-        all_assigned = all(getattr(s, "speaker", None) in ("SPEAKER_00", "SPEAKER_01", "SPEAKER_0", "SPEAKER_1") for s in segments)
+
+        all_assigned = all(
+            getattr(s, "speaker", None) in ("SPEAKER_00", "SPEAKER_01", "SPEAKER_0", "SPEAKER_1")
+            for s in segments
+        )
         is_stereo = audio_path and ASRService._is_stereo_file(audio_path)
         if is_stereo and all_assigned:
-            logger.info("Diarization: Segments already have physical stereo channel assignments. Bypassing acoustic overlap guessing.")
+            logger.info(
+                "Diarization: Segments already have physical stereo channel assignments. Bypassing acoustic overlap guessing."
+            )
             speakers_present = sorted({s.speaker for s in segments if s.speaker})
             aligned_segments = [
                 SegmentInput(
@@ -349,14 +480,21 @@ class DiarizationService:
             aligned_segments = self._deduplicate_assigned_segments(aligned_segments)
             agent_id, customer_id = self._identify_roles(aligned_segments, speakers_present)
             from asr_pro.core.semantic_role_guard import enforce_semantic_role_guard
+
             aligned_segments = enforce_semantic_role_guard(aligned_segments, agent_id, customer_id)
-            return aligned_segments, agent_id, customer_id
+            return aligned_segments, agent_id, customer_id, "stereo_physical", []
 
         # Mono AND stereo audio both go through the same acoustic alignment
-        # path below - diarize() always tries the real pyannote pipeline
-        # first regardless of channel count, only falling back to per-channel
-        # energy heuristics if pyannote is unavailable.
-        turns = self.diarize(audio_path) if audio_path else []
+        # path below - diarize_with_overlap() always tries the real pyannote
+        # pipeline first regardless of channel count, only falling back to
+        # per-channel energy heuristics if pyannote is unavailable.
+        diarization_result = (
+            self.diarize_with_overlap(audio_path)
+            if audio_path
+            else DiarizationResult(turns=[], overlap_regions=[], method="none")
+        )
+        turns = diarization_result.turns
+        diarization_method = diarization_result.method
 
         aligned_segments: list[SegmentInput] = []
         speakers_present = set()
@@ -380,11 +518,23 @@ class DiarizationService:
                 if seg_words and len(seg_words) > 0:
                     word_speaker_votes: dict[str, int] = {}
                     for word in seg_words:
-                        w_start = float(getattr(word, "start", word.get("start", seg.start)) if not isinstance(word, dict) else word.get("start", seg.start))
-                        w_end = float(getattr(word, "end", word.get("end", seg.end)) if not isinstance(word, dict) else word.get("end", seg.end))
-                        w_text = str(getattr(word, "word", word.get("word", "")) if not isinstance(word, dict) else word.get("word", ""))
+                        w_start = float(
+                            getattr(word, "start", word.get("start", seg.start))
+                            if not isinstance(word, dict)
+                            else word.get("start", seg.start)
+                        )
+                        w_end = float(
+                            getattr(word, "end", word.get("end", seg.end))
+                            if not isinstance(word, dict)
+                            else word.get("end", seg.end)
+                        )
+                        w_text = str(
+                            getattr(word, "word", word.get("word", ""))
+                            if not isinstance(word, dict)
+                            else word.get("word", "")
+                        )
                         w_mid = (w_start + w_end) / 2.0
-                        
+
                         w_spk = best_speaker
                         active_speakers = []
                         for turn in turns:
@@ -395,18 +545,21 @@ class DiarizationService:
                                 )
                         if active_speakers:
                             w_spk = active_speakers[0]
-                        
+
                         is_crosstalk = len(active_speakers) > 1 or any(
                             max(0.0, min(w_end, t.end) - max(w_start, t.start)) > 0.0
-                            for t in turns if t.speaker != w_spk
+                            for t in turns
+                            if t.speaker != w_spk
                         )
-                        processed_words.append({
-                            "word": w_text,
-                            "start": w_start,
-                            "end": w_end,
-                            "speaker": w_spk,
-                            "is_crosstalk": is_crosstalk,
-                        })
+                        processed_words.append(
+                            {
+                                "word": w_text,
+                                "start": w_start,
+                                "end": w_end,
+                                "speaker": w_spk,
+                                "is_crosstalk": is_crosstalk,
+                            }
+                        )
                     if word_speaker_votes:
                         best_speaker = max(word_speaker_votes, key=lambda s: word_speaker_votes[s])
                 else:
@@ -438,10 +591,33 @@ class DiarizationService:
             # Smart heuristic alignment when no pyannote model is available.
             # Strategy: cluster segments into "conversation turns" by detecting pauses, questions, and answers,
             # then alternate speakers per turn (not per segment).
+            if diarization_method == "none":
+                diarization_method = "text_heuristic"
             MIN_PAUSE_LONG = 1.5
             MIN_PAUSE_QUESTION = 0.4
-            question_suffixes = ("?", "mı", "mi", "mu", "mü", "mısınız", "misiniz", "musunuz", "müsünüz", "değil mi")
-            answer_starters = ("evet", "hayır", "tamam", "efendim", "alo", "iyiyim", "teşekkür", "merhaba", "buyrun")
+            question_suffixes = (
+                "?",
+                "mı",
+                "mi",
+                "mu",
+                "mü",
+                "mısınız",
+                "misiniz",
+                "musunuz",
+                "müsünüz",
+                "değil mi",
+            )
+            answer_starters = (
+                "evet",
+                "hayır",
+                "tamam",
+                "efendim",
+                "alo",
+                "iyiyim",
+                "teşekkür",
+                "merhaba",
+                "buyrun",
+            )
             turn_groups: list[list[int]] = []
             current_group: list[int] = [0]
 
@@ -449,10 +625,16 @@ class DiarizationService:
                 pause = segments[idx].start - segments[idx - 1].end
                 prev_text = (segments[idx - 1].text or "").strip().lower()
                 curr_text = (segments[idx].text or "").strip().lower()
-                is_question = any(prev_text.endswith(q) for q in question_suffixes) or "?" in prev_text
+                is_question = (
+                    any(prev_text.endswith(q) for q in question_suffixes) or "?" in prev_text
+                )
                 is_answer_start = any(curr_text.startswith(w) for w in answer_starters)
 
-                if pause > MIN_PAUSE_LONG or (pause > MIN_PAUSE_QUESTION and is_question) or (pause > 0.35 and is_answer_start):
+                if (
+                    pause > MIN_PAUSE_LONG
+                    or (pause > MIN_PAUSE_QUESTION and is_question)
+                    or (pause > 0.35 and is_answer_start)
+                ):
                     turn_groups.append(current_group)
                     current_group = [idx]
                 else:
@@ -483,11 +665,19 @@ class DiarizationService:
         aligned_segments = self._deduplicate_assigned_segments(aligned_segments)
         agent_id, customer_id = self._identify_roles(aligned_segments, sorted(speakers_present))
         from asr_pro.core.semantic_role_guard import enforce_semantic_role_guard
+
         aligned_segments = enforce_semantic_role_guard(aligned_segments, agent_id, customer_id)
         from asr_pro.services.llm_discourse_guard import LLMDiscourseGuard
+
         aligned_segments = LLMDiscourseGuard.verify_discourse_roles(aligned_segments)
         aligned_segments = self._apply_markov_smoothing(aligned_segments)
-        return aligned_segments, agent_id, customer_id
+        return (
+            aligned_segments,
+            agent_id,
+            customer_id,
+            diarization_method,
+            diarization_result.overlap_regions,
+        )
 
     @staticmethod
     def _apply_markov_smoothing(segments: list[SegmentInput]) -> list[SegmentInput]:
@@ -514,6 +704,7 @@ class DiarizationService:
                 and (next_seg.start - curr_seg.end) < 1.5
             ):
                 import dataclasses
+
                 try:
                     segments[i] = dataclasses.replace(curr_seg, speaker=prev_seg.speaker)
                 except Exception:
@@ -528,24 +719,62 @@ class DiarizationService:
     @staticmethod
     def extract_crosstalk_events(
         segments: list[SegmentInput],
+        overlap_regions: list[tuple[float, float]] | None = None,
     ) -> list[dict[str, Any]]:
-        """Extract overlapping speech (crosstalk / interruption) events from word timestamps and turns."""
+        """Extract overlapping speech (crosstalk / interruption) events.
+
+        When `overlap_regions` is provided (real acoustic overlap from
+        pyannote's non-exclusive diarization annotation, see
+        DiarizationResult.overlap_regions), each region is intersected with
+        the transcript segments active at that time to report which speakers
+        were actually talking over each other - a direct acoustic measurement,
+        not a guess. Without it (degraded diarization methods), falls back to
+        the timestamp-boundary heuristic: two consecutive, different-speaker
+        segments whose timestamps overlap by more than 0.1s.
+        """
         events: list[dict[str, Any]] = []
+
+        if overlap_regions:
+            for region_start, region_end in overlap_regions:
+                active = [
+                    seg
+                    for seg in segments
+                    if seg.speaker and max(seg.start, region_start) < min(seg.end, region_end)
+                ]
+                speakers = sorted({seg.speaker for seg in active})
+                if len(speakers) < 2:
+                    continue
+                duration = region_end - region_start
+                events.append(
+                    {
+                        "start": round(float(region_start), 2),
+                        "end": round(float(region_end), 2),
+                        "duration": round(float(duration), 2),
+                        "speakers": speakers,
+                        "type": "interruption",
+                        "intensity": "high" if duration > 1.0 else "medium",
+                        "description": f"Söz kesme / Çakışma ({round(float(duration), 1)} sn)",
+                    }
+                )
+            return events
+
         for i in range(len(segments) - 1):
             seg_a = segments[i]
             seg_b = segments[i + 1]
             if seg_a.speaker and seg_b.speaker and seg_a.speaker != seg_b.speaker:
                 overlap = seg_a.end - seg_b.start
                 if overlap > 0.1:
-                    events.append({
-                        "start": round(float(seg_b.start), 2),
-                        "end": round(float(min(seg_a.end, seg_b.end)), 2),
-                        "duration": round(float(overlap), 2),
-                        "speakers": [seg_a.speaker, seg_b.speaker],
-                        "type": "interruption",
-                        "intensity": "high" if overlap > 1.0 else "medium",
-                        "description": f"Söz kesme / Çakışma ({round(float(overlap), 1)} sn)",
-                    })
+                    events.append(
+                        {
+                            "start": round(float(seg_b.start), 2),
+                            "end": round(float(min(seg_a.end, seg_b.end)), 2),
+                            "duration": round(float(overlap), 2),
+                            "speakers": [seg_a.speaker, seg_b.speaker],
+                            "type": "interruption",
+                            "intensity": "high" if overlap > 1.0 else "medium",
+                            "description": f"Söz kesme / Çakışma ({round(float(overlap), 1)} sn)",
+                        }
+                    )
         return events
 
     @staticmethod
@@ -577,7 +806,7 @@ class DiarizationService:
                 voice_type = "Uzman / Takım Lideri (Orta F0 Spektrumu)"
             else:
                 f0_mean = 140.0 + (idx * 25.0)
-                f0_range = f"{int(f0_mean-15)}Hz - {int(f0_mean+15)}Hz"
+                f0_range = f"{int(f0_mean - 15)}Hz - {int(f0_mean + 15)}Hz"
                 voice_type = f"Ek Konuşmacı ({spk}) Akustik Bandı"
 
             profiles[spk] = {
@@ -594,12 +823,13 @@ class DiarizationService:
         if not segments:
             return []
         import re
+
         refined = []
         for seg in segments:
             text = (seg.text or "").strip()
             if not text:
                 continue
-            sentences = [s.strip() for s in re.split(r'(?<=[.?!;])\s+', text) if s.strip()]
+            sentences = [s.strip() for s in re.split(r"(?<=[.?!;])\s+", text) if s.strip()]
             if len(sentences) <= 1 or (seg.end - seg.start) <= 2.5:
                 refined.append(seg)
                 continue
@@ -614,7 +844,16 @@ class DiarizationService:
                 else:
                     sent_dur = duration * (sent_len / total_chars)
                     sent_end = round(cur_start + sent_dur, 2)
-                sub_words = [w for w in seg_words if getattr(w, "start", 0) < sent_end and getattr(w, "end", 0) > round(cur_start, 2)] if seg_words else None
+                sub_words = (
+                    [
+                        w
+                        for w in seg_words
+                        if getattr(w, "start", 0) < sent_end
+                        and getattr(w, "end", 0) > round(cur_start, 2)
+                    ]
+                    if seg_words
+                    else None
+                )
                 refined.append(
                     SegmentInput(
                         start=round(cur_start, 2),
@@ -635,6 +874,7 @@ class DiarizationService:
         if not segments:
             return []
         import re
+
         cleaned = []
         recent_by_spk: dict[str, list[tuple[float, float, str]]] = {}
         for seg in segments:
@@ -642,16 +882,16 @@ class DiarizationService:
             text = getattr(seg, "text", "").strip()
             if not text:
                 continue
-            norm = re.sub(r'[^\w\s]', '', text.lower()).strip()
+            norm = re.sub(r"[^\w\s]", "", text.lower()).strip()
             if not norm:
                 continue
             words = norm.split()
             start = float(getattr(seg, "start", 0))
             end = float(getattr(seg, "end", 0))
-            
+
             is_dup = False
             if spk in recent_by_spk:
-                for prev_start, prev_end, prev_norm in recent_by_spk[spk][-4:]:
+                for _prev_start, prev_end, prev_norm in recent_by_spk[spk][-4:]:
                     gap = start - prev_end
                     if norm == prev_norm and gap < 25.0:
                         is_dup = True

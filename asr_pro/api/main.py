@@ -45,6 +45,7 @@ from fastapi_cache.backends.redis import RedisBackend
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from asr_pro.api.deps import get_db, limiter
+from asr_pro.api.routes.agents import router as agents_router
 from asr_pro.api.routes.alerts import router as alerts_router
 from asr_pro.api.routes.analytics import router as analytics_router
 from asr_pro.api.routes.audit import router as audit_router
@@ -53,7 +54,6 @@ from asr_pro.api.routes.conversations import router as conversations_router
 from asr_pro.api.routes.keywords import router as keywords_router
 from asr_pro.api.routes.keywords import topics_router
 from asr_pro.api.routes.websocket import router as websocket_router
-from asr_pro.api.routes.agents import router as agents_router
 from asr_pro.db.session import SessionLocal, init_db
 from asr_pro.services.seed_data import seed_defaults
 

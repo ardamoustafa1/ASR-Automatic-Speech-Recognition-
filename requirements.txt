@@ -6,6 +6,12 @@ mlx-whisper; platform_system == "Darwin" and platform_machine == "arm64"
 transformers>=4.40.0
 torch>=2.2.0,<3.0.0
 pyannote.audio>=4.0.4,<5.0.0
+pyannote.metrics>=3.2.1
+speechbrain>=1.0.0
+# pyannote.audio's Model subclasses lightning.pytorch.LightningModule - use
+# this package (not pytorch_lightning) for scripts/finetune_diarization.py,
+# since the two ship distinct, non-interchangeable LightningModule classes.
+lightning>=2.0.0
 
 # ─── Audio / Export ─────────────────────────────────────────────────────────
 fpdf>=1.7.2

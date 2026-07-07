@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import Any
 
 logger = logging.getLogger("asr_pro.services.domain_adaptation")
 
@@ -51,14 +52,16 @@ class DomainAdaptationService:
         """Apply regex phonetic and Levenshtein domain corrections to text."""
         if not text:
             return text
-            
+
         original_text = text
         for pattern, replacement in TELECOM_PHONETIC_CORRECTIONS:
             text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
-            
+
         if text != original_text:
-            logger.debug(f"DomainAdaptation: Corrected telecom terms: '{original_text[:40]}' -> '{text[:40]}'")
-            
+            logger.debug(
+                f"DomainAdaptation: Corrected telecom terms: '{original_text[:40]}' -> '{text[:40]}'"
+            )
+
         return text
 
     @classmethod
@@ -69,11 +72,12 @@ class DomainAdaptationService:
             text = getattr(seg, "text", "") if not isinstance(seg, dict) else seg.get("text", "")
             if not text:
                 continue
-                
+
             new_text = cls.correct_telecom_terms(text)
             if new_text != text:
                 corrected_count += 1
                 import dataclasses
+
                 if dataclasses.is_dataclass(seg):
                     try:
                         # Replace in place if possible in list
@@ -91,11 +95,11 @@ class DomainAdaptationService:
                     seg["text"] = new_text
                 else:
                     try:
-                        setattr(seg, "text", new_text)
+                        seg.text = new_text
                     except Exception:
                         pass
-                        
+
         if corrected_count > 0:
             logger.info(f"DomainAdaptation: Corrected domain jargon in {corrected_count} segments.")
-            
+
         return segments

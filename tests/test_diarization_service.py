@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """Unit tests for DiarizationService and Agent/Customer role identification."""
 
+from asr_pro.config import settings
 from asr_pro.core.keyword_engine import SegmentInput
 from asr_pro.services.diarization_service import DiarizationService
 
@@ -36,7 +37,9 @@ def test_role_identification_agent_greeting():
         ),
     ]
 
-    aligned, agent_id, customer_id = service.assign_speakers_to_segments(segments)
+    aligned, agent_id, customer_id, method, overlap_regions = service.assign_speakers_to_segments(
+        segments
+    )
     assert len(aligned) == 3
     assert agent_id == "SPEAKER_00"
     assert customer_id == "SPEAKER_01"
@@ -54,7 +57,9 @@ def test_heuristic_speaker_alternation():
         ),  # 2.0s pause -> new speaker
     ]
 
-    aligned, agent_id, customer_id = service.assign_speakers_to_segments(segments)
+    aligned, agent_id, customer_id, method, overlap_regions = service.assign_speakers_to_segments(
+        segments
+    )
     assert aligned[0].speaker == "SPEAKER_00"
     assert aligned[1].speaker == "SPEAKER_01"
     assert agent_id == "SPEAKER_00"
@@ -63,6 +68,7 @@ def test_heuristic_speaker_alternation():
 
 def test_stereo_audio_diarization_and_alignment(tmp_path):
     import wave
+
     import numpy as np
 
     file_path = str(tmp_path / "test_stereo.wav")
@@ -96,10 +102,13 @@ def test_stereo_audio_diarization_and_alignment(tmp_path):
         SegmentInput(start=1.1, end=1.9, text="Teşekkürler, bir sorunum vardı.", speaker=None),
     ]
 
-    aligned, agent_id, customer_id = service.assign_speakers_to_segments(segments, audio_path=file_path)
+    aligned, agent_id, customer_id, method, overlap_regions = service.assign_speakers_to_segments(
+        segments, audio_path=file_path
+    )
     assert len(aligned) == 2
     assert aligned[0].speaker == "SPEAKER_00"
     assert aligned[1].speaker == "SPEAKER_01"
+    assert method in ("pyannote", "stereo_energy")
 
     turns = service.diarize(file_path)
     assert len(turns) >= 2
@@ -123,8 +132,9 @@ def test_deduplicate_assigned_segments():
 
 def test_stereo_physical_assignment_bypass(tmp_path):
     import wave
+    from unittest.mock import patch
+
     import numpy as np
-    from unittest.mock import patch, MagicMock
 
     file_path = str(tmp_path / "bypass_stereo.wav")
     sr = 16000
@@ -140,9 +150,35 @@ def test_stereo_physical_assignment_bypass(tmp_path):
         SegmentInput(start=0.5, end=1.5, text="Merhaba customer", speaker="SPEAKER_01"),
     ]
 
-    with patch.object(service, "diarize", side_effect=Exception("Should not be called when bypassing!")):
-        aligned, agent_id, customer_id = service.assign_speakers_to_segments(segments, audio_path=file_path)
+    with patch.object(
+        service,
+        "diarize_with_overlap",
+        side_effect=Exception("Should not be called when bypassing!"),
+    ):
+        aligned, agent_id, customer_id, method, overlap_regions = (
+            service.assign_speakers_to_segments(segments, audio_path=file_path)
+        )
         assert len(aligned) == 2
         assert aligned[0].speaker == "SPEAKER_00"
         assert aligned[1].speaker == "SPEAKER_01"
+        assert method == "stereo_physical"
 
+
+def test_finetuned_segmentation_swap_is_noop_when_unset():
+    service = DiarizationService.get_instance()
+    original = settings.diarization_finetuned_segmentation_path
+    try:
+        settings.diarization_finetuned_segmentation_path = ""
+        service._maybe_swap_finetuned_segmentation()  # must not raise
+    finally:
+        settings.diarization_finetuned_segmentation_path = original
+
+
+def test_finetuned_segmentation_swap_warns_on_missing_checkpoint(tmp_path, caplog):
+    service = DiarizationService.get_instance()
+    original = settings.diarization_finetuned_segmentation_path
+    try:
+        settings.diarization_finetuned_segmentation_path = str(tmp_path / "does_not_exist.ckpt")
+        service._maybe_swap_finetuned_segmentation()  # must not raise, just warn
+    finally:
+        settings.diarization_finetuned_segmentation_path = original

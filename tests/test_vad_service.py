@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Unit tests for Silero VAD Service."""
 
-from asr_pro.services.vad_service import VADService, DEFAULT_VAD_PARAMETERS
+from asr_pro.services.vad_service import DEFAULT_VAD_PARAMETERS, VADService
 
 
 def test_vad_service_singleton():
@@ -31,4 +31,3 @@ def test_vad_tightened_parameters():
     assert params["min_speech_duration_ms"] == 250
     assert params["min_silence_duration_ms"] == 500
     assert DEFAULT_VAD_PARAMETERS["threshold"] == 0.5
-

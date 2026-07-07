@@ -6,12 +6,15 @@ Applies enterprise-grade DSP signal pre-conditioning for call center recordings
 Removes DC offset, power line hum (<80Hz), high-frequency hiss (>7500Hz), and applies
 dynamic RMS range normalization to prevent noise-induced hallucinations and false speaker splits.
 """
+
 from typing import Any
+
 import numpy as np
 from loguru import logger
 
 try:
     from scipy.signal import butter, filtfilt
+
     _SCIPY_AVAILABLE = True
 except ImportError:
     _SCIPY_AVAILABLE = False
@@ -19,7 +22,7 @@ except ImportError:
 
 def condition_telephony_audio(audio_input: Any, sample_rate: int = 16000) -> np.ndarray:
     """Apply bandpass filtering and dynamic RMS normalization to speech audio input.
-    
+
     Accepts either a file path (str) or a numpy PCM array.
     Returns a float32 numpy array in [-1.0, 1.0] ready for Whisper and Pyannote.
     """
@@ -29,6 +32,7 @@ def condition_telephony_audio(audio_input: Any, sample_rate: int = 16000) -> np.
     if isinstance(audio_input, str):
         try:
             from faster_whisper import decode_audio
+
             pcm = decode_audio(audio_input, sampling_rate=sample_rate)
         except Exception as exc:
             logger.warning(f"AudioConditioning: Could not decode audio path '{audio_input}': {exc}")
@@ -134,4 +138,3 @@ def is_ivr_segment(text: str, start_time: float) -> bool:
         return False
     text_lower = text.lower()
     return any(kw in text_lower for kw in IVR_KEYWORDS)
-
