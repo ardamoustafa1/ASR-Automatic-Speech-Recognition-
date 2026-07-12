@@ -74,6 +74,29 @@ RED_FLAG_PATTERNS = {
     },
 }
 
+# The `sector` string a caller passes through save_conversation_with_analysis
+# is shared across multiple engines with historically different vocabularies
+# (DomainAdaptationService uses "banking"/"telecom"/"omni"; this engine's
+# RED_FLAG_PATTERNS predates that and only recognizes "finance"/"telecom"/
+# "health"/"insurance"/"general"). Without this alias table, a call tagged
+# "banking" - the exact value a bank-facing UI would send - silently matched
+# zero domain patterns (RED_FLAG_PATTERNS.get("banking", {}) == {}), so
+# SPK/BDDK red-flag detection never fired for banking calls. "omni" (mixed
+# contact center, no single sector) maps to "general" rather than a specific
+# regulator's patterns, matching its meaning elsewhere in the system.
+_DOMAIN_KEY_ALIASES = {
+    "banking": "finance",
+    "bank": "finance",
+    "billing": "telecom",
+    "omni": "general",
+}
+
+
+def _canonical_domain_key(domain_key: str) -> str:
+    key = (domain_key or "general").strip().lower()
+    return _DOMAIN_KEY_ALIASES.get(key, key)
+
+
 # Sahte Alarmları Önleyen Olumsuzluk Kalkanı (False Positive Negators)
 FALSE_POSITIVE_NEGATORS = {
     "değil",
@@ -172,7 +195,7 @@ def analyze_compliance_risk(
             return []
 
     violations = []
-    domain_patterns = RED_FLAG_PATTERNS.get(domain_key, {})
+    domain_patterns = RED_FLAG_PATTERNS.get(_canonical_domain_key(domain_key), {})
     general_patterns = RED_FLAG_PATTERNS.get("general", {})
     all_patterns = {**domain_patterns, **general_patterns}
 
