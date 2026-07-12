@@ -1,0 +1,28 @@
+# GPU runtime image for production ASR throughput.
+# faster-whisper (CTranslate2) on an NVIDIA GPU decodes large-v3 at roughly
+# RTF 0.05-0.10 - an order of magnitude faster than CPU/MLX - which is what
+# high-volume bank/operator deployments need.
+# Requires the NVIDIA container toolkit on the host (nvidia-ctk runtime).
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-venv \
+    python3-pip \
+    ffmpeg \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY requirements.txt .
+
+RUN python3.11 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY asr_pro/ asr_pro/
+COPY tools/ tools/
+
+EXPOSE 8000
+
+CMD ["uvicorn", "asr_pro.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
