@@ -130,6 +130,41 @@ def test_export_conversation(client: TestClient):
     assert "segments" in data
 
 
+def test_export_conversation_txt_and_srt(client: TestClient):
+    token = get_admin_token(client)
+    convs = client.get("/api/v1/conversations", headers={"Authorization": f"Bearer {token}"}).json()
+    if not convs:
+        return
+
+    conv_id = convs[0]["id"]
+
+    txt = client.get(
+        f"/api/v1/conversations/{conv_id}/export?format=txt",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert txt.status_code == 200
+    assert txt.headers["content-type"].startswith("text/plain")
+    assert "attachment" in txt.headers.get("content-disposition", "")
+    assert f"# Görüşme {conv_id}" in txt.text
+
+    srt = client.get(
+        f"/api/v1/conversations/{conv_id}/export?format=srt",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert srt.status_code == 200
+    assert "attachment" in srt.headers.get("content-disposition", "")
+    # SRT structure: index line + "HH:MM:SS,mmm --> HH:MM:SS,mmm" timing line
+    if srt.text.strip():
+        assert " --> " in srt.text
+        assert srt.text.lstrip().startswith("1\n")
+
+    bad = client.get(
+        f"/api/v1/conversations/{conv_id}/export?format=pdf",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert bad.status_code == 422  # only json|txt|srt allowed
+
+
 def test_delete_conversation(client: TestClient):
     token = get_admin_token(client)
     # Post a new conversation to delete
@@ -170,8 +205,18 @@ def test_reassign_speaker_endpoint(client: TestClient):
     payload = {
         "full_transcript": "Merhaba Vodafone ben Ali. Faturam çok yüksek geldi.",
         "segments": [
-            {"start": 0.0, "end": 2.0, "text": "Merhaba Vodafone ben Ali.", "speaker": "SPEAKER_00"},
-            {"start": 2.5, "end": 4.5, "text": "Faturam çok yüksek geldi.", "speaker": "SPEAKER_01"},
+            {
+                "start": 0.0,
+                "end": 2.0,
+                "text": "Merhaba Vodafone ben Ali.",
+                "speaker": "SPEAKER_00",
+            },
+            {
+                "start": 2.5,
+                "end": 4.5,
+                "text": "Faturam çok yüksek geldi.",
+                "speaker": "SPEAKER_01",
+            },
         ],
         "sector": "telecom",
     }
@@ -179,12 +224,15 @@ def test_reassign_speaker_endpoint(client: TestClient):
         "/api/v1/conversations/analyze", json=payload, headers={"Authorization": f"Bearer {token}"}
     )
     import time
+
     time.sleep(1)
 
     convs = client.get("/api/v1/conversations", headers={"Authorization": f"Bearer {token}"}).json()
     assert len(convs) > 0
     conv_id = convs[0]["id"]
-    detail = client.get(f"/api/v1/conversations/{conv_id}", headers={"Authorization": f"Bearer {token}"}).json()
+    detail = client.get(
+        f"/api/v1/conversations/{conv_id}", headers={"Authorization": f"Bearer {token}"}
+    ).json()
     assert len(detail["segments"]) > 0
     seg_id = detail["segments"][0]["id"]
 
