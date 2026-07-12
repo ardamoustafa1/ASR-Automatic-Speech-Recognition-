@@ -55,8 +55,123 @@ def _extract_executive_summary(text: str, num_sentences: int = 2) -> str:
     return " ".join([s[2] for s in top_sentences])
 
 
-def generate_crm_summary(full_text: str, classifier: Any = None) -> CallSummary:
-    """Zero-Shot NLP ile Yapılandırılmış CRM Kapanış Notu Üretir."""
+# Zero-shot label sets are sector-specific: forcing a banking call ("kredili
+# mevduat hesabı limitim") through telecom-shaped categories ("Tarife veya
+# Paket Değişikliği") produces a CRM note that's confidently wrong rather
+# than just imprecise - the classifier still returns its best guess even
+# when none of the offered labels genuinely fit.
+_INTENT_LABELS = {
+    "telecom": [
+        "Fatura İtirazı",
+        "Teknik Destek Talebi",
+        "Abonelik İptali",
+        "Tarife veya Paket Değişikliği",
+        "Genel Bilgi Alma",
+        "Kampanya veya Teklif Sorgusu",
+        "Şikayet",
+        "Sözleşme Yenileme",
+    ],
+    "banking": [
+        "Hesap İşlemi Talebi",
+        "Kredi Kartı Sorunu",
+        "Kredi veya Kredili Mevduat Talebi",
+        "Dolandırıcılık / Şüpheli İşlem Bildirimi",
+        "Havale veya EFT Sorunu",
+        "Hesap Açma veya Kapatma",
+        "Şikayet",
+        "Genel Bilgi Alma",
+    ],
+}
+_INTENT_LABELS["bank"] = _INTENT_LABELS["banking"]
+_INTENT_LABELS["finance"] = _INTENT_LABELS["banking"]
+_INTENT_LABELS["general"] = [
+    "Fatura veya Ödeme Sorunu",
+    "Ürün veya Hizmet Talebi",
+    "Şikayet",
+    "Teknik Destek Talebi",
+    "İptal veya Değişiklik Talebi",
+    "Genel Bilgi Alma",
+]
+
+_ISSUE_LABELS = {
+    "telecom": [
+        "Fiyat veya Tarife Anlaşmazlığı",
+        "Bağlantı veya Sinyal Sorunu",
+        "Paket veya Kota Yetersizliği",
+        "Fatura Yüksekliği",
+        "Sözleşme veya Taahhüt Sorunu",
+        "Müşteri Bilgi Talebi",
+        "Hizmet Kalitesi Şikayeti",
+        "Teknik Arıza",
+    ],
+    "banking": [
+        "İşlem Ücreti Anlaşmazlığı",
+        "Kart Bloke veya İptal Sorunu",
+        "Faiz Oranı Anlaşmazlığı",
+        "Yetkisiz İşlem Şikayeti",
+        "Sistem veya Uygulama Hatası",
+        "Hesap Bilgisi Talebi",
+        "Hizmet Kalitesi Şikayeti",
+        "Limit Yetersizliği",
+    ],
+}
+_ISSUE_LABELS["bank"] = _ISSUE_LABELS["banking"]
+_ISSUE_LABELS["finance"] = _ISSUE_LABELS["banking"]
+_ISSUE_LABELS["general"] = [
+    "Fiyat Anlaşmazlığı",
+    "Hizmet Kalitesi Şikayeti",
+    "Sistem veya Teknik Hata",
+    "Müşteri Bilgi Talebi",
+    "Sözleşme Sorunu",
+]
+
+_ACTION_LABELS = {
+    "telecom": [
+        "Tarife veya Paket Değişikliği Yapıldı",
+        "Kampanya veya İndirim Tanımlandı",
+        "Müşteri Yönlendirildi",
+        "Fatura Düzeltmesi Yapıldı",
+        "Teknik Destek Verildi",
+        "Genel Bilgi Verildi",
+        "Randevu veya Geri Arama Planlandı",
+        "Talep Üst Birime İletildi",
+        "Herhangi Bir İşlem Yapılmadı",
+    ],
+    "banking": [
+        "Kart Bloke Edildi",
+        "İtiraz veya Şikayet Kaydı Açıldı",
+        "Hesap İşlemi Gerçekleştirildi",
+        "Şube veya Uzman Birime Yönlendirildi",
+        "Genel Bilgi Verildi",
+        "Randevu Planlandı",
+        "Talep Üst Birime İletildi",
+        "Herhangi Bir İşlem Yapılmadı",
+    ],
+}
+_ACTION_LABELS["bank"] = _ACTION_LABELS["banking"]
+_ACTION_LABELS["finance"] = _ACTION_LABELS["banking"]
+_ACTION_LABELS["general"] = [
+    "Talep Karşılandı",
+    "Müşteri Yönlendirildi",
+    "Genel Bilgi Verildi",
+    "Talep Üst Birime İletildi",
+    "Herhangi Bir İşlem Yapılmadı",
+]
+
+
+def _labels_for_sector(table: dict[str, list[str]], sector: str) -> list[str]:
+    return table.get((sector or "").strip().lower(), table["general"])
+
+
+def generate_crm_summary(
+    full_text: str, classifier: Any = None, sector: str = "telecom"
+) -> CallSummary:
+    """Zero-Shot NLP ile Yapılandırılmış CRM Kapanış Notu Üretir.
+
+    `sector` selects which label set (telecom/banking/general) the
+    intent/issue/action classification draws from - see the module-level
+    _INTENT_LABELS/_ISSUE_LABELS/_ACTION_LABELS tables.
+    """
 
     if not full_text or len(full_text.strip()) < 10:
         return CallSummary(
@@ -89,49 +204,21 @@ def generate_crm_summary(full_text: str, classifier: Any = None) -> CallSummary:
         analysis_text = full_text
 
     # 1. Müşteri (Intent)
-    intent_labels = [
-        "Fatura İtirazı",
-        "Teknik Destek Talebi",
-        "Abonelik İptali",
-        "Tarife veya Paket Değişikliği",
-        "Genel Bilgi Alma",
-        "Kampanya veya Teklif Sorgusu",
-        "Şikayet",
-        "Sözleşme Yenileme",
-    ]
+    intent_labels = _labels_for_sector(_INTENT_LABELS, sector)
     intent_res = zero_shot_classifier.predict(
         analysis_text, labels=intent_labels, hypothesis="Müşterinin ana talebi {} ile ilgilidir."
     )
     intent = intent_res["labels"][0]
 
     # 2. Sorun (Issue)
-    issue_labels = [
-        "Fiyat veya Tarife Anlaşmazlığı",
-        "Bağlantı veya Sinyal Sorunu",
-        "Paket veya Kota Yetersizliği",
-        "Fatura Yüksekliği",
-        "Sözleşme veya Taahhüt Sorunu",
-        "Müşteri Bilgi Talebi",
-        "Hizmet Kalitesi Şikayeti",
-        "Teknik Arıza",
-    ]
+    issue_labels = _labels_for_sector(_ISSUE_LABELS, sector)
     issue_res = zero_shot_classifier.predict(
         analysis_text, labels=issue_labels, hypothesis="Bu çağrıdaki kök neden {} kaynaklıdır."
     )
     issue = issue_res["labels"][0]
 
     # 3. İşlem (Action)
-    action_labels = [
-        "Tarife veya Paket Değişikliği Yapıldı",
-        "Kampanya veya İndirim Tanımlandı",
-        "Müşteri Yönlendirildi",
-        "Fatura Düzeltmesi Yapıldı",
-        "Teknik Destek Verildi",
-        "Genel Bilgi Verildi",
-        "Randevu veya Geri Arama Planlandı",
-        "Talep Üst Birime İletildi",
-        "Herhangi Bir İşlem Yapılmadı",
-    ]
+    action_labels = _labels_for_sector(_ACTION_LABELS, sector)
     action_res = zero_shot_classifier.predict(
         analysis_text,
         labels=action_labels,
@@ -158,14 +245,14 @@ def generate_crm_summary(full_text: str, classifier: Any = None) -> CallSummary:
 
 
 def generate_ollama_summary(
-    full_text: str, model_name: str = "llama3", classifier: Any = None
+    full_text: str, model_name: str = "llama3", classifier: Any = None, sector: str = "telecom"
 ) -> CallSummary:
     """
     Yerel Ollama sunucusunu (http://localhost:11434) kullanarak %100 gizli ve internetsiz özet üretir.
     Hata durumunda veya Ollama kapalıysa anında zero-shot motora dönüş (Fallback) yapar.
     """
     if model_name == "Kapalı (Sadece Yerel Motor)":
-        return generate_crm_summary(full_text, classifier)
+        return generate_crm_summary(full_text, classifier, sector=sector)
 
     system_prompt = """
     Sen Apple seviyesinde kıdemli bir Müşteri Hizmetleri Yöneticisisin. Sana verilen müşteri temsilcisi çağrı deşifresini analiz edip sadece aşağıdaki JSON formatında çıktı vereceksin.
@@ -209,4 +296,4 @@ def generate_ollama_summary(
             )
     except Exception as e:
         logger.warning(f"Ollama Bağlantı Hatası: {e}. Standart (Zero-Shot) motora geçiliyor...")
-        return generate_crm_summary(full_text, classifier)
+        return generate_crm_summary(full_text, classifier, sector=sector)
