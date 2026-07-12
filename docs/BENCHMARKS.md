@@ -1,51 +1,64 @@
 # ASR-Pro Performance Benchmarks
 
-ASR-Pro is architected to deliver ultra-low-latency speech recognition across heterogenous computing environments, featuring native acceleration for NVIDIA CUDA, Apple Silicon (MLX), and CPU fallback.
+> **2026-07-11 correction:** the numbers previously in this file (RTF ~0.015
+> on Apple Silicon, ~0.008 on an RTX 4090) were never produced by an actual
+> benchmark run - no script in this repo generates them, and they contradict
+> real measurements taken this session on real Apple Silicon hardware by
+> roughly 30-45x. They have been removed. Everything below is either a real
+> measurement (labeled **Measured**, with how to reproduce it) or an explicit
+> **Projected** estimate sourced from faster-whisper's own published GPU
+> benchmarks - never present a Projected number to a customer as if it were
+> Measured on this system.
 
-## 1. Apple Silicon Native MLX Acceleration
-On macOS devices with M1/M2/M3/M4 chips, ASR-Pro automatically utilizes Apple's MLX framework for native GPU acceleration.
+## 1. Word Error Rate (WER) - Measured
 
-*   **Model**: `mlx-community/whisper-turbo`
-*   **Hardware**: Apple M2 Max, 32GB Unified Memory
-*   **Audio Length**: 10 minutes (600 seconds)
-*   **Real-Time Factor (RTF)**: **~0.015** (Transcribes 10 minutes in ~9 seconds)
-*   **Word Error Rate (WER)**: ~3.5% (Turkish Call Center Dataset)
+Run via `python3 scripts/evaluate_wer.py --dataset benchmarks/eval_dataset.json --audio-dir benchmarks/audio` against the 15-sample clean-audio reference set (see `.benchmarks/results.md` for full methodology and caveats):
 
-## 2. NVIDIA CUDA (Float16)
-On Linux/Windows machines with NVIDIA GPUs, ASR-Pro utilizes `faster-whisper` with FP16 precision.
+| Model | WER | Accuracy |
+|---|---|---|
+| `large-v3` | 4.37% | 95.63% |
+| `large-v3-turbo` | 1.64% | 98.36% |
 
-*   **Model**: `turbo`
-*   **Hardware**: NVIDIA RTX 4090, 24GB VRAM
-*   **Audio Length**: 10 minutes (600 seconds)
-*   **Real-Time Factor (RTF)**: **~0.008** (Transcribes 10 minutes in ~4.8 seconds)
-*   **Word Error Rate (WER)**: ~3.5% (Turkish Call Center Dataset)
+This dataset is clean short utterances, not real noisy call-center audio -
+treat it as a regression check, not a production accuracy guarantee. Measure
+WER on your own recorded calls (with human-transcribed reference text)
+before quoting a number to a customer; `docs/WHISPER_FINETUNING.md`'s
+review-queue workflow produces exactly that ground truth as a side effect of
+preparing fine-tune data.
 
-## 3. CPU Fallback (INT8)
-When no GPU acceleration is available, ASR-Pro falls back to CPU using `faster-whisper` INT8 quantization to preserve memory and deliver acceptable speeds.
+## 2. Real-Time Factor (RTF) - Apple Silicon (Measured)
 
-*   **Model**: `turbo`
-*   **Hardware**: Intel Core i7-13700K / 16 Threads
-*   **Audio Length**: 10 minutes (600 seconds)
-*   **Real-Time Factor (RTF)**: **~0.08** (Transcribes 10 minutes in ~48 seconds)
-*   **Word Error Rate (WER)**: ~3.8% (Minor degradation due to int8 quantization)
+Native `python scripts/dev.py` (not Docker - Docker containers are plain
+Linux and never get MLX), real ~2.5 minute stereo call recordings,
+`ASRService.transcribe()` end to end (VAD-gated decode + second-pass rescue
+on low-confidence segments; excludes diarization and the NLP engines, which
+run separately in `save_conversation_with_analysis`):
 
-## 4. NLP Pipeline (Sentiment, Topics, Churn)
-The downstream NLP pipeline uses Turkish-optimized models (e.g., dbmdz/bert-base-turkish-cased, custom keywords).
+| Model | RTF |
+|---|---|
+| `large-v3` | 0.5 - 0.7x |
+| `large-v3-turbo` | 0.45 - 0.48x |
 
-*   **Keyword Hit Latency**: ~5ms per transcript segment
-*   **Sentiment Inference**: ~15ms per segment (CPU)
-*   **Churn Calculation**: <1ms
+A real ~2.5 minute call takes roughly 70-95 seconds to transcribe on this
+hardware. That's an async/background-pipeline speed (results land in the
+dashboard within ~1-2 minutes), not a live/real-time speed.
 
-## Summary
+## 3. NVIDIA CUDA (faster-whisper) - Projected, not yet measured
 
-| Metric | Apple Silicon (MLX) | NVIDIA GPU (CUDA) | CPU (INT8) |
-|---|---|---|---|
-| Engine | `mlx-whisper` | `faster-whisper` | `faster-whisper` |
-| Precision | FP16 | FP16 | INT8 |
-| RTF | ~0.015 | ~0.008 | ~0.08 |
-| VRAM/RAM Usage | ~2.5 GB | ~3.0 GB | ~1.5 GB |
-| Turkish WER | 95%+ Accuracy | 95%+ Accuracy | 94%+ Accuracy |
+No NVIDIA GPU was available in this session to measure directly.
+faster-whisper's own published benchmarks report roughly 0.05-0.10x RTF for
+large-v3 float16 on a T4/A10G-class GPU - if that holds here, the same
+~2.5 minute call would take on the order of 10-20 seconds instead of
+70-95. **Verify this on your actual target GPU before quoting it** - use
+`docker-compose.gpu.yml` (see `docs/DEPLOYMENT.md`) and re-run
+`scripts/evaluate_wer.py`, which reports RTF alongside WER.
 
-**Conclusion**: ASR-Pro achieves >= 95% accuracy on domain-specific datasets (Finance, Telecom) and transcribes hours of audio in minutes, fully justifying its Enterprise-grade performance guarantees.
+## 4. NLP pipeline
 
--->
+Not independently benchmarked. `save_conversation_with_analysis` runs
+keyword/topic/empathy/churn/compliance analysis sequentially per
+conversation, sharing singleton models (sentiment classifier, diarization
+pipeline) that have no verified thread-safety for concurrent inference calls
+- don't parallelize this stage without adding locking first (see
+`ASRService._inference_lock` for the pattern already used to guard the
+Whisper model itself).
