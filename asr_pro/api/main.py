@@ -3,6 +3,7 @@
 import asyncio
 import os
 import sys
+import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -87,6 +88,26 @@ async def lifespan(app: FastAPI):
 
     purge_task = asyncio.create_task(purge_audio_loop())
     logger.info("Started 24-hour audio purge background job.")
+
+    # ─── ASR Model Preload ────────────────────────────────────────────────────
+    # Whisper large-v3 takes ~10-20s to load; without preload that cost lands
+    # on the FIRST customer upload after every restart. Load it in a daemon
+    # thread so API startup itself stays instant.
+    from asr_pro.config import _is_testing as _no_model_mode
+    from asr_pro.config import settings as _settings
+
+    if _settings.asr_preload_model and not _no_model_mode:
+
+        def _preload_asr_model():
+            try:
+                from asr_pro.services.asr_service import ASRService
+
+                ASRService.get_instance().ensure_model_loaded()
+                logger.info("ASR model preloaded - first upload will start decoding immediately.")
+            except Exception as e:
+                logger.warning(f"ASR model preload failed (will lazy-load on first upload): {e}")
+
+        threading.Thread(target=_preload_asr_model, name="asr-preload", daemon=True).start()
 
     # ─── Cache Initialization ─────────────────────────────────────────────────
     redis_url = os.getenv("ASR_REDIS_URL") or os.getenv("REDIS_URL")
