@@ -45,6 +45,10 @@ export const api = {
     return res.json();
   },
   me: () => request("/auth/me"),
+  // Direct download URL: a top-level <a href> navigation sends the
+  // SameSite=Lax auth cookie, so attachment downloads work without JS blobs.
+  exportUrl: (conversationId, format = "json") =>
+    `${BASE}/conversations/${conversationId}/export?format=${format}`,
   health: () => request("/health"),
   dashboard: () => request("/analytics/dashboard"),
   trends: (params) => request(`/analytics/trends?${new URLSearchParams(params)}`),
