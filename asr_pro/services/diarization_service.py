@@ -445,6 +445,7 @@ class DiarizationService:
                         segment_index=idx,
                         avg_logprob=float(getattr(seg, "avg_logprob", -1.0) or -1.0),
                         words=getattr(seg, "words", None),
+                        raw_text=str(getattr(seg, "raw_text", "") or ""),
                     )
                 )
 
@@ -474,6 +475,7 @@ class DiarizationService:
                     segment_index=i,
                     avg_logprob=s.avg_logprob,
                     words=getattr(s, "words", None),
+                    raw_text=getattr(s, "raw_text", "") or "",
                 )
                 for i, s in enumerate(segments)
             ]
@@ -585,6 +587,7 @@ class DiarizationService:
                         segment_index=seg.segment_index,
                         avg_logprob=seg.avg_logprob,
                         words=processed_words if processed_words else getattr(seg, "words", None),
+                        raw_text=getattr(seg, "raw_text", "") or "",
                     )
                 )
         else:
@@ -659,6 +662,7 @@ class DiarizationService:
                             segment_index=seg.segment_index,
                             avg_logprob=seg.avg_logprob,
                             words=getattr(seg, "words", None),
+                            raw_text=getattr(seg, "raw_text", "") or "",
                         )
                     )
 
@@ -863,6 +867,7 @@ class DiarizationService:
                         segment_index=len(refined),
                         avg_logprob=seg.avg_logprob,
                         words=sub_words,
+                        raw_text=getattr(seg, "raw_text", "") or "",
                     )
                 )
                 cur_start = sent_end
