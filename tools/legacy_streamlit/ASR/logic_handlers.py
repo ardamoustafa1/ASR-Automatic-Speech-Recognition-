@@ -261,10 +261,16 @@ def load_whisper_model(model_size: str, engine_type: str = "Windows", _force_rel
         actual_model = resolve_model_name(model_size)
         if wants_apple_mlx_engine(engine_type):
             if not is_apple_silicon_host():
-                raise RuntimeError(
-                    "Mac/MLX motoru yalnızca Apple Silicon macOS üzerinde kullanılabilir."
+                # The sidebar hides this option outside native Apple Silicon
+                # macOS, but session state can still carry a stale selection
+                # across a container restart - degrade to CPU/CUDA instead of
+                # a dead-end error so a transcription request never just fails.
+                st.warning(
+                    "🍎 MLX bu ortamda (container/Linux) kullanılamıyor; "
+                    "otomatik olarak standart CPU/CUDA motoruna geçildi."
                 )
-            return MLXWhisperWrapper(actual_model)
+            else:
+                return MLXWhisperWrapper(actual_model)
 
         WhisperModel = get_whisper_model_class()
         cpu_threads = max(4, os.cpu_count() or 4)
