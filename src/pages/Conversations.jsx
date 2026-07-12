@@ -1,7 +1,30 @@
 import { Fragment, useState, useEffect } from "react";
-import { ChevronRight, Upload, FileAudio, AlertTriangle, CheckCircle2, Award, Activity, ShieldCheck, Volume2 } from "lucide-react";
+import {
+  ChevronRight,
+  Upload,
+  FileAudio,
+  AlertTriangle,
+  CheckCircle2,
+  Award,
+  Activity,
+  ShieldCheck,
+  Volume2,
+} from "lucide-react";
 import { api, formatTime, severityColor } from "../api/client";
 import { SkeletonList } from "../components/common/Skeleton";
+
+const SECTOR_OPTIONS = [
+  { value: "omni", label: "Genel (Çok Sektör)" },
+  { value: "telecom", label: "Telekom" },
+  { value: "banking", label: "Bankacılık" },
+  { value: "insurance", label: "Sigorta" },
+  { value: "health", label: "Sağlık" },
+];
+const SECTOR_LABEL_MAP = Object.fromEntries(SECTOR_OPTIONS.map((o) => [o.value, o.label]));
+
+function sectorLabel(value) {
+  return SECTOR_LABEL_MAP[value] || value;
+}
 
 function highlightedRanges(text, hits) {
   if (!text || !hits?.length) return [];
@@ -63,7 +86,26 @@ function renderHighlightedText(text, hits, words = null, meta = {}) {
         title = `🔄 Ara müdahale (${isAg ? "Temsilci" : "Müşteri"}): ${title}`;
       }
 
-      const hasHit = hits && hits.some((h) => h.matched_text && w.word && w.word.toLowerCase().includes(h.matched_text.toLowerCase()));
+      // Word-level ASR suspicion: content words (4+ chars) the decoder
+      // itself scored below 0.4 probability. Measured on real calls, garbled
+      // words ("Katapay" 0.28) carry this signal even when the whole line
+      // looks confident - underline them so a QA reviewer knows exactly
+      // which word to double-check against the audio.
+      const wordLen = (w.word || "").replace(/[^\p{L}\p{N}]/gu, "").length;
+      if (typeof w.probability === "number" && w.probability < 0.4 && wordLen >= 4) {
+        style = {
+          ...style,
+          borderBottom: "2px dotted #F59E0B",
+        };
+        title = `❓ Düşük kelime güveni (%${Math.round(w.probability * 100)}): ${title}`;
+      }
+
+      const hasHit =
+        hits &&
+        hits.some(
+          (h) =>
+            h.matched_text && w.word && w.word.toLowerCase().includes(h.matched_text.toLowerCase())
+        );
       if (hasHit) {
         return (
           <mark className="kw-highlight" key={idx} style={style} title={title}>
@@ -107,6 +149,7 @@ export default function ConversationsPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState("");
+  const [uploadSector, setUploadSector] = useState("omni");
 
   const loadList = () => {
     setLoading(true);
@@ -120,28 +163,62 @@ export default function ConversationsPage() {
     loadList();
   }, []);
 
+  // While any upload is still transcribing (status="processing"), silently
+  // refresh the list so the card flips to completed/failed without the user
+  // needing to reload the page.
+  const hasProcessing = list.some((c) => c.status === "processing");
+  useEffect(() => {
+    if (!hasProcessing) return undefined;
+    const timer = setInterval(() => {
+      api
+        .conversations()
+        .then(setList)
+        .catch(() => {});
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [hasProcessing]);
+
+  const [searchQuery, setSearchQuery] = useState("");
+
   const openDetail = async (id) => {
+    setSearchQuery("");
     const detail = await api.conversation(id);
     setSelected(detail);
   };
 
   const handleFileUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
     setUploading(true);
-    setUploadMsg("Ses dosyası yükleniyor ve yapay zeka analizine alınıyor...");
-    try {
-      await api.uploadAudio(file);
-      setUploadMsg("Başarıyla arka plana alındı! Deşifre tamamlandığında listede görünecek.");
-      setTimeout(() => {
-        loadList();
-        setUploadMsg("");
-      }, 3500);
-    } catch (err) {
-      setUploadMsg(`Yükleme hatası: ${err.message}`);
-    } finally {
-      setUploading(false);
+    let ok = 0;
+    const failed = [];
+    // Sequential on purpose: the ASR engine serializes inference anyway, and
+    // parallel uploads would just queue server-side while risking the
+    // 20/minute rate limit on the upload endpoint.
+    for (const [i, file] of files.entries()) {
+      setUploadMsg(
+        files.length > 1
+          ? `(${i + 1}/${files.length}) "${file.name}" yükleniyor ve analize alınıyor...`
+          : "Ses dosyası yükleniyor ve yapay zeka analizine alınıyor..."
+      );
+      try {
+        await api.uploadAudio(file, uploadSector);
+        ok += 1;
+      } catch (err) {
+        failed.push(`${file.name}: ${err.message}`);
+      }
     }
+    setUploadMsg(
+      failed.length
+        ? `${ok} dosya alındı, ${failed.length} hata: ${failed.join(" | ")}`
+        : `${ok} dosya başarıyla arka plana alındı! Deşifre tamamlandıkça listede görünecek.`
+    );
+    setTimeout(() => {
+      loadList();
+      setUploadMsg("");
+    }, 4000);
+    setUploading(false);
+    e.target.value = "";
   };
 
   if (loading) {
@@ -172,7 +249,29 @@ export default function ConversationsPage() {
           <h1>Görüşmeler</h1>
           <p>Anahtar kelime eşleşmeleriyle birlikte deşifre kayıtları</p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <select
+            value={uploadSector}
+            onChange={(e) => setUploadSector(e.target.value)}
+            disabled={uploading}
+            title="Yüklenecek çağrının sektörü: doğru sektörel sözlük (telekom/bankacılık terimleri) ve uyum (compliance) kontrolleri buna göre seçilir."
+            style={{
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.15)",
+              borderRadius: "8px",
+              color: "#fff",
+              padding: "0.6rem 0.8rem",
+              fontSize: "0.85rem",
+              fontWeight: 500,
+              cursor: uploading ? "default" : "pointer",
+            }}
+          >
+            {SECTOR_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value} style={{ color: "#000" }}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
           <label
             className="btn btn-primary"
             style={{
@@ -194,6 +293,7 @@ export default function ConversationsPage() {
             <input
               type="file"
               accept="audio/*"
+              multiple
               onChange={handleFileUpload}
               disabled={uploading}
               style={{ display: "none" }}
@@ -240,10 +340,65 @@ export default function ConversationsPage() {
                 onClick={() => openDetail(c.id)}
               >
                 <div className="conv-item-head">
-                  <span className="sector-badge">{c.sector}</span>
+                  <span className="sector-badge">{sectorLabel(c.sector)}</span>
+                  {c.status === "processing" && (
+                    <span
+                      className="hit-badge"
+                      title="Deşifre ve analiz arka planda sürüyor - tamamlanınca bu kart otomatik güncellenir."
+                      style={{ background: "rgba(129,140,248,0.18)", color: "#A5B4FC" }}
+                    >
+                      ⏳ İşleniyor
+                    </span>
+                  )}
+                  {c.status === "failed" && (
+                    <span
+                      className="hit-badge"
+                      title={c.error_message || "İşleme hatası"}
+                      style={{ background: "rgba(239,68,68,0.2)", color: "#FCA5A5" }}
+                    >
+                      ❌ Hata
+                    </span>
+                  )}
                   <span className="hit-badge">{c.hit_count} hit</span>
+                  {typeof c.asr_confidence === "number" && c.asr_confidence > 0 && (
+                    <span
+                      className="hit-badge"
+                      title="ASR güven skoru (decoder log-olasılığından)"
+                      style={{
+                        background:
+                          c.asr_confidence >= 0.8
+                            ? "rgba(16,185,129,0.15)"
+                            : c.asr_confidence >= 0.6
+                              ? "rgba(245,158,11,0.15)"
+                              : "rgba(239,68,68,0.15)",
+                        color:
+                          c.asr_confidence >= 0.8
+                            ? "#6EE7B7"
+                            : c.asr_confidence >= 0.6
+                              ? "#FCD34D"
+                              : "#FCA5A5",
+                      }}
+                    >
+                      %{Math.round(c.asr_confidence * 100)}
+                    </span>
+                  )}
+                  {c.quality_gate_passed === false && (
+                    <span
+                      className="hit-badge"
+                      title="Kalite kapısı: düşük güven - insan incelemesi önerilir"
+                      style={{ background: "rgba(239,68,68,0.2)", color: "#FCA5A5" }}
+                    >
+                      ⚠️ İncele
+                    </span>
+                  )}
                 </div>
-                <p className="conv-preview">{c.full_transcript.slice(0, 80)}...</p>
+                <p className="conv-preview">
+                  {c.status === "processing" && !c.full_transcript
+                    ? `${c.metadata_json?.uploaded_name || "Ses dosyası"} (deşifre sürüyor...)`
+                    : c.status === "failed" && !c.full_transcript
+                      ? `${c.metadata_json?.uploaded_name || "Ses dosyası"} - işlenemedi: ${(c.error_message || "bilinmeyen hata").slice(0, 60)}`
+                      : `${c.full_transcript.slice(0, 80)}...`}
+                </p>
                 <span className="conv-date">{new Date(c.created_at).toLocaleString("tr-TR")}</span>
                 <ChevronRight size={16} className="conv-arrow" />
               </div>
@@ -258,11 +413,571 @@ export default function ConversationsPage() {
             </div>
           ) : (
             <>
-              <div className="panel-header">
-                <span>{selected.sector}</span>
-                <h2>Görüşme Detayı</h2>
-                <p>{selected.hit_count} anahtar kelime eşleşmesi</p>
+              <div
+                className="panel-header"
+                style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "0.5rem" }}
+              >
+                <div style={{ flex: 1, minWidth: "200px" }}>
+                  <span>{sectorLabel(selected.sector)}</span>
+                  <h2>Görüşme Detayı</h2>
+                  <p>{selected.hit_count} anahtar kelime eşleşmesi</p>
+                </div>
+                <div style={{ display: "flex", gap: "0.4rem" }}>
+                  {["txt", "srt", "json"].map((fmt) => (
+                    <a
+                      key={fmt}
+                      href={api.exportUrl(selected.id, fmt)}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={`Transkripti ${fmt.toUpperCase()} olarak indir`}
+                      style={{
+                        fontSize: "0.72rem",
+                        padding: "0.35rem 0.7rem",
+                        borderRadius: "6px",
+                        border: "1px solid rgba(255,255,255,0.15)",
+                        background: "rgba(255,255,255,0.06)",
+                        color: "var(--text-secondary)",
+                        textDecoration: "none",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.5px",
+                      }}
+                    >
+                      ⬇ {fmt}
+                    </a>
+                  ))}
+                </div>
               </div>
+
+              {selected.status === "processing" && (
+                <div
+                  style={{
+                    margin: "1rem 0",
+                    padding: "0.8rem 1rem",
+                    borderRadius: "10px",
+                    background: "rgba(129,140,248,0.12)",
+                    border: "1px solid rgba(129,140,248,0.35)",
+                    color: "#A5B4FC",
+                    fontSize: "0.85rem",
+                  }}
+                >
+                  ⏳ Bu kayıt henüz işleniyor: deşifre ve analiz arka planda sürüyor. Liste otomatik
+                  yenilenir; tamamlanınca transkript ve metrikler burada görünecek.
+                </div>
+              )}
+              {selected.status === "failed" && (
+                <div
+                  style={{
+                    margin: "1rem 0",
+                    padding: "0.8rem 1rem",
+                    borderRadius: "10px",
+                    background: "rgba(239,68,68,0.12)",
+                    border: "1px solid rgba(239,68,68,0.35)",
+                    color: "#FCA5A5",
+                    fontSize: "0.85rem",
+                  }}
+                >
+                  ❌ Bu kayıt işlenemedi: {selected.error_message || "bilinmeyen hata"}
+                </div>
+              )}
+
+              {selected.metadata_json?.quality_metrics && (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                    gap: "0.75rem",
+                    margin: "1rem 0 1.4rem",
+                  }}
+                >
+                  {[
+                    {
+                      label: "İşlem Süresi",
+                      value:
+                        selected.metadata_json.quality_metrics.processing_time_sec != null
+                          ? `${selected.metadata_json.quality_metrics.processing_time_sec}s`
+                          : "—",
+                      hint: "Toplam analiz süresi",
+                      color: "#9CA3AF",
+                    },
+                    {
+                      label: "Gerçek Zaman Oranı",
+                      value:
+                        selected.metadata_json.quality_metrics.rtf != null
+                          ? `${selected.metadata_json.quality_metrics.rtf}x`
+                          : "—",
+                      hint: "RTF performans değeri",
+                      color: "#818CF8",
+                    },
+                    {
+                      label: "ASR Güveni",
+                      value:
+                        selected.asr_confidence != null
+                          ? `%${Math.round(selected.asr_confidence * 100)}`
+                          : "—",
+                      hint: "Modelin metin güven skoru",
+                      color: "#10B981",
+                    },
+                    {
+                      label: "Filtrelenen Segment",
+                      value: selected.metadata_json.quality_metrics.filtered_segment_count ?? "—",
+                      hint: "Kalite kapısı tarafından atılan parça",
+                      color: "#F59E0B",
+                    },
+                    {
+                      label: "Domain Düzeltme",
+                      value: selected.metadata_json.quality_metrics.domain_correction_count ?? "—",
+                      hint: "Sektör sözlüğü düzeltmesi",
+                      color: "#9CA3AF",
+                    },
+                    {
+                      label: "Ses Kalitesi",
+                      value:
+                        selected.metadata_json?.mos_metrics?.mos_score != null
+                          ? `%${Math.round((selected.metadata_json.mos_metrics.mos_score / 5) * 100)}`
+                          : "—",
+                      hint: "Kayıt okunabilirlik sinyali (MOS)",
+                      color: "#10B981",
+                    },
+                  ].map((m) => (
+                    <div
+                      key={m.label}
+                      className="glass-panel"
+                      style={{
+                        padding: "0.8rem 0.9rem",
+                        borderTop: `2px solid ${m.color}`,
+                        borderRadius: "10px",
+                        background: "rgba(255,255,255,0.03)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "0.68rem",
+                          color: "var(--text-muted)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.4px",
+                          marginBottom: "0.35rem",
+                        }}
+                      >
+                        {m.label}
+                      </div>
+                      <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "#fff" }}>
+                        {m.value}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "0.68rem",
+                          color: "var(--text-secondary)",
+                          marginTop: "0.2rem",
+                        }}
+                      >
+                        {m.hint}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <h3
+                style={{
+                  fontSize: "0.95rem",
+                  color: "var(--text-secondary)",
+                  margin: "0.5rem 0 0.75rem",
+                }}
+              >
+                Ses İçi Arama
+              </h3>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Örn: bütçe, toplantı, rakam..."
+                style={{
+                  width: "100%",
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  borderRadius: "8px",
+                  color: "#fff",
+                  padding: "0.6rem 0.8rem",
+                  fontSize: "0.85rem",
+                  marginBottom: "0.5rem",
+                }}
+              />
+              {searchQuery.trim() && (
+                <div
+                  style={{
+                    fontSize: "0.75rem",
+                    color: "var(--text-muted)",
+                    marginBottom: "0.75rem",
+                  }}
+                >
+                  {
+                    selected.segments.filter((s) =>
+                      s.text
+                        ?.toLocaleLowerCase("tr-TR")
+                        .includes(searchQuery.trim().toLocaleLowerCase("tr-TR"))
+                    ).length
+                  }{" "}
+                  eşleşme bulundu
+                </div>
+              )}
+
+              <h3
+                style={{
+                  fontSize: "0.95rem",
+                  color: "var(--text-secondary)",
+                  margin: "1rem 0 0.75rem",
+                }}
+              >
+                Deşifre Çıktısı (Konuşmacı Bazlı)
+              </h3>
+              <div className="transcript-box">
+                {selected.segments.map((seg, _idx) => {
+                  const isSearchMatch =
+                    searchQuery.trim() &&
+                    seg.text
+                      ?.toLocaleLowerCase("tr-TR")
+                      .includes(searchQuery.trim().toLocaleLowerCase("tr-TR"));
+                  const segHits = selected.hits.filter(
+                    (h) => Math.abs(h.timestamp_sec - seg.start) < 0.5
+                  );
+                  const meta = selected.metadata_json || {};
+                  const isIvr = seg.speaker && seg.speaker.includes("IVR");
+                  const isAgent =
+                    !isIvr &&
+                    seg.speaker &&
+                    (meta.agent_speaker_id
+                      ? seg.speaker === meta.agent_speaker_id
+                      : seg.speaker === "SPEAKER_00");
+                  const isCustomer =
+                    !isIvr &&
+                    seg.speaker &&
+                    (meta.customer_speaker_id
+                      ? seg.speaker === meta.customer_speaker_id
+                      : seg.speaker === "SPEAKER_01");
+                  const isSupervisor =
+                    !isIvr &&
+                    !isAgent &&
+                    !isCustomer &&
+                    seg.speaker &&
+                    (meta.supervisor_speaker_id
+                      ? seg.speaker === meta.supervisor_speaker_id
+                      : seg.speaker === "SPEAKER_02" || seg.speaker.includes("SPEAKER_02"));
+
+                  // Determine emotion badge from segment metadata if available
+                  const emotion = seg.emotion_category || seg.emotion || null;
+                  const sentimentScore =
+                    typeof seg.sentiment_score === "number" ? seg.sentiment_score : null;
+
+                  let emotionClass = "neutral";
+                  let emotionLabel = null;
+                  if (emotion) {
+                    if (emotion === "Öfke") {
+                      emotionClass = "negative";
+                      emotionLabel = "😡 Öfkeli";
+                    } else if (emotion === "Hayal Kırıklığı") {
+                      emotionClass = "negative";
+                      emotionLabel = "😞 Hayal Kırıklığı";
+                    } else if (emotion === "Memnuniyet") {
+                      emotionClass = "positive";
+                      emotionLabel = "😊 Memnun";
+                    } else if (emotion === "Endişe") {
+                      emotionClass = "anxious";
+                      emotionLabel = "😟 Endişeli";
+                    } else if (emotion === "Nötr İletişim") {
+                      emotionClass = "neutral";
+                      emotionLabel = null;
+                    }
+                  } else if (sentimentScore !== null) {
+                    if (sentimentScore > 0.2) {
+                      emotionClass = "positive";
+                      emotionLabel = "😊 Pozitif";
+                    } else if (sentimentScore < -0.2) {
+                      emotionClass = "negative";
+                      emotionLabel = "😟 Negatif";
+                    }
+                  }
+
+                  const rowClass = `transcript-row${
+                    isIvr
+                      ? " is-ivr"
+                      : isAgent
+                        ? " is-agent"
+                        : isCustomer
+                          ? " is-customer"
+                          : isSupervisor
+                            ? " is-supervisor"
+                            : ""
+                  }`;
+                  const avatarClass = isIvr
+                    ? "t-avatar ivr-avatar"
+                    : isAgent
+                      ? "t-avatar agent-avatar"
+                      : isCustomer
+                        ? "t-avatar customer-avatar"
+                        : isSupervisor
+                          ? "t-avatar supervisor-avatar"
+                          : "t-avatar unknown-avatar";
+                  const bubbleClass = isIvr
+                    ? "t-bubble ivr-bubble"
+                    : isAgent
+                      ? "t-bubble agent-bubble"
+                      : isCustomer
+                        ? "t-bubble customer-bubble"
+                        : isSupervisor
+                          ? "t-bubble supervisor-bubble"
+                          : "t-bubble unknown-bubble";
+
+                  const avatarIcon = isIvr
+                    ? "🤖"
+                    : isAgent
+                      ? "👤"
+                      : isCustomer
+                        ? "🎧"
+                        : isSupervisor
+                          ? "👔"
+                          : "💬";
+                  // Mirrors asr_pro/config.py's transcript_low_confidence_logprob
+                  // default. -1.0 is the "no data" sentinel, not a real score.
+                  const isLowConfidence =
+                    typeof seg.avg_logprob === "number" &&
+                    seg.avg_logprob !== -1.0 &&
+                    seg.avg_logprob < -1.1;
+                  const speakerName = isIvr
+                    ? `Santral / IVR`
+                    : isAgent
+                      ? `Temsilci`
+                      : isCustomer
+                        ? `Müşteri`
+                        : isSupervisor
+                          ? `Uzman / Takım Lideri`
+                          : seg.speaker || "Bilinmeyen";
+
+                  return (
+                    <div
+                      className={rowClass}
+                      key={seg.id}
+                      style={
+                        searchQuery.trim() && !isSearchMatch
+                          ? { opacity: 0.3 }
+                          : isSearchMatch
+                            ? {
+                                outline: "1px solid #818CF8",
+                                outlineOffset: "2px",
+                                borderRadius: "8px",
+                              }
+                            : undefined
+                      }
+                    >
+                      <div
+                        className={avatarClass}
+                        style={isSupervisor ? { background: "#7E22CE", color: "#fff" } : {}}
+                      >
+                        {avatarIcon}
+                      </div>
+                      <div className="t-content">
+                        <div className="t-meta">
+                          <span
+                            className={`t-speaker-label${
+                              isIvr
+                                ? " ivr-label"
+                                : isAgent
+                                  ? " agent-label"
+                                  : isCustomer
+                                    ? " customer-label"
+                                    : isSupervisor
+                                      ? " supervisor-label"
+                                      : ""
+                            }`}
+                            style={isSupervisor ? { color: "#D8B4FE", fontWeight: "bold" } : {}}
+                          >
+                            {speakerName}
+                            {seg.speaker ? (
+                              <span
+                                style={{
+                                  fontWeight: 400,
+                                  color: "var(--text-dim)",
+                                  marginLeft: "0.3rem",
+                                }}
+                              >
+                                ({seg.speaker})
+                              </span>
+                            ) : null}
+                            <select
+                              value={seg.speaker || "SPEAKER_00"}
+                              onChange={async (e) => {
+                                const newSpk = e.target.value;
+                                try {
+                                  await api.reassignSpeaker(selected.id, seg.id, newSpk);
+                                  const updatedSegs = selected.segments.map((s) =>
+                                    s.id === seg.id
+                                      ? {
+                                          ...s,
+                                          speaker: newSpk,
+                                          auto_corrected: false,
+                                          rlhf_corrected: true,
+                                        }
+                                      : s
+                                  );
+                                  setSelected({ ...selected, segments: updatedSegs });
+                                  alert(
+                                    `✅ Konuşmacı etiketi '${newSpk}' olarak güncellendi ve Akustik RLHF ses izi matrisine geri bildirim eklendi.`
+                                  );
+                                } catch (err) {
+                                  alert("Konuşmacı güncellenemedi: " + err.message);
+                                }
+                              }}
+                              style={{
+                                marginLeft: "0.6rem",
+                                background: "rgba(255, 255, 255, 0.1)",
+                                border: "1px solid rgba(255, 255, 255, 0.2)",
+                                borderRadius: "6px",
+                                color: "#fff",
+                                fontSize: "0.75rem",
+                                padding: "0.1rem 0.4rem",
+                                cursor: "pointer",
+                              }}
+                              title="QA Uzmanı: Konuşmacıyı düzeltin ve yapay zeka biyometri motorunu itin (Active Learning)"
+                            >
+                              <option value="SPEAKER_00">👤 Temsilci (SPEAKER_00)</option>
+                              <option value="SPEAKER_01">🎧 Müşteri (SPEAKER_01)</option>
+                              <option value="SPEAKER_02">👔 Uzman/Lider (SPEAKER_02)</option>
+                            </select>
+                          </span>
+                          <span className="t-time">
+                            {seg.is_interruption && (
+                              <span
+                                className="badge-interruption"
+                                title="Müşteri ve temsilcinin aynı anda konuştuğu söz kesme anı"
+                              >
+                                ⚡ Söz Kesme
+                              </span>
+                            )}
+                            {seg.auto_corrected && (
+                              <span
+                                className="badge-autocorrect"
+                                title="Yapay zeka anlamsal bütüne bakarak rolü otomatik doğruladı"
+                              >
+                                🤖 AI Doğrulanmış
+                              </span>
+                            )}
+                            {seg.rlhf_corrected && (
+                              <span
+                                className="badge-autocorrect"
+                                style={{
+                                  background: "rgba(168, 85, 247, 0.2)",
+                                  color: "#D8B4FE",
+                                  border: "1px solid #A855F7",
+                                }}
+                                title="QA Uzmanı tarafından düzeltilip RLHF modeline öğretildi"
+                              >
+                                🧠 RLHF Eğitildi
+                              </span>
+                            )}
+                            {formatTime(seg.start)}
+                          </span>
+                        </div>
+                        <div
+                          className={bubbleClass}
+                          style={
+                            isLowConfidence
+                              ? { outline: "1px dashed #F59E0B", outlineOffset: "2px" }
+                              : undefined
+                          }
+                          title={
+                            isLowConfidence
+                              ? "Düşük ASR güveni - bu satırı gözden geçirin"
+                              : undefined
+                          }
+                        >
+                          {isLowConfidence && (
+                            <span
+                              style={{
+                                fontSize: "0.68rem",
+                                color: "#F59E0B",
+                                display: "block",
+                                marginBottom: "0.2rem",
+                              }}
+                            >
+                              ⚠️ Düşük güven
+                            </span>
+                          )}
+                          {renderHighlightedText(
+                            seg.text,
+                            segHits,
+                            seg.words ||
+                              (meta.word_level_diarization
+                                ? meta.word_level_diarization.find((w) => w.segment_index === _idx)
+                                    ?.words
+                                : null),
+                            { ...meta, current_seg_speaker: seg.speaker }
+                          )}
+                        </div>
+                        {emotionLabel && (
+                          <span className={`t-emotion ${emotionClass}`}>{emotionLabel}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {selected.segments.some((s) => s.raw_text) && (
+                <details
+                  style={{
+                    marginTop: "1rem",
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(239, 68, 68, 0.25)",
+                    borderRadius: "10px",
+                    padding: "0.8rem 1rem",
+                  }}
+                >
+                  <summary
+                    style={{
+                      cursor: "pointer",
+                      fontSize: "0.85rem",
+                      fontWeight: 600,
+                      color: "#FCA5A5",
+                    }}
+                  >
+                    Ham ASR / Denetim ({selected.segments.filter((s) => s.raw_text).length} satır
+                    düzeltildi)
+                  </summary>
+                  <p
+                    style={{ fontSize: "0.72rem", color: "var(--text-muted)", margin: "0.6rem 0" }}
+                  >
+                    Sektör sözlüğü düzeltmesi uygulanmadan önce modelin ürettiği ham metin -
+                    denetim/uyum amaçlı saklanır.
+                  </p>
+                  {selected.segments
+                    .filter((s) => s.raw_text)
+                    .map((s) => (
+                      <div
+                        key={s.id}
+                        style={{
+                          fontSize: "0.78rem",
+                          padding: "0.5rem 0",
+                          borderTop: "1px solid rgba(255,255,255,0.06)",
+                        }}
+                      >
+                        <div style={{ color: "var(--text-muted)", marginBottom: "0.15rem" }}>
+                          {formatTime(s.start)} · Ham:{" "}
+                          <span style={{ color: "#FCA5A5" }}>{s.raw_text}</span>
+                        </div>
+                        <div style={{ color: "#6EE7B7" }}>Düzeltilmiş: {s.text}</div>
+                      </div>
+                    ))}
+                </details>
+              )}
+
+              <h3
+                style={{
+                  fontSize: "0.95rem",
+                  color: "var(--text-secondary)",
+                  margin: "1.5rem 0 0.75rem",
+                }}
+              >
+                Detaylı Analiz
+              </h3>
 
               {selected.metadata_json && (
                 <div
@@ -323,6 +1038,40 @@ export default function ConversationsPage() {
                         }}
                       >
                         {selected.metadata_json.empathy_summary}
+                      </div>
+                    )}
+                    {selected.metadata_json.empathy_breakdown && (
+                      <div style={{ marginTop: "0.6rem", fontSize: "0.75rem" }}>
+                        <div style={{ color: "var(--text-muted)", marginBottom: "0.3rem" }}>
+                          🗣️ Söz Kesme:{" "}
+                          {selected.metadata_json.empathy_breakdown.interruption_count} kez
+                          {" · "}Temsilci WPM:{" "}
+                          {selected.metadata_json.empathy_breakdown.agent_wpm_avg}
+                        </div>
+                        {[
+                          ...selected.metadata_json.empathy_breakdown.active_listening_hits,
+                          ...selected.metadata_json.empathy_breakdown.compassion_hits,
+                          ...selected.metadata_json.empathy_breakdown.solution_hits,
+                        ].length > 0 && (
+                          <div style={{ color: "#6EE7B7", marginBottom: "0.2rem" }}>
+                            ✅ Olumlu:{" "}
+                            {[
+                              ...selected.metadata_json.empathy_breakdown.active_listening_hits,
+                              ...selected.metadata_json.empathy_breakdown.compassion_hits,
+                              ...selected.metadata_json.empathy_breakdown.solution_hits,
+                            ]
+                              .map((h) => `"${h}"`)
+                              .join(", ")}
+                          </div>
+                        )}
+                        {selected.metadata_json.empathy_breakdown.defensive_hits.length > 0 && (
+                          <div style={{ color: "#FCA5A5" }}>
+                            ⚠️ Savunmacı:{" "}
+                            {selected.metadata_json.empathy_breakdown.defensive_hits
+                              .map((h) => `"${h}"`)
+                              .join(", ")}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -393,6 +1142,27 @@ export default function ConversationsPage() {
                         Güven Seviyesi: {selected.metadata_json.churn_confidence}
                       </div>
                     )}
+                    {selected.metadata_json.churn_risk_breakdown && (
+                      <details
+                        style={{
+                          marginTop: "0.5rem",
+                          fontSize: "0.72rem",
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        <summary style={{ cursor: "pointer" }}>Skor Detayı</summary>
+                        <div style={{ marginTop: "0.3rem", paddingLeft: "0.5rem" }}>
+                          {Object.entries(selected.metadata_json.churn_risk_breakdown).map(
+                            ([key, value]) => (
+                              <div key={key}>
+                                {key}:{" "}
+                                {typeof value === "number" ? value.toFixed(2) : String(value)}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </details>
+                    )}
                     {selected.metadata_json.agent_retention_score !== undefined && (
                       <div
                         style={{
@@ -406,11 +1176,42 @@ export default function ConversationsPage() {
                         }}
                       >
                         <div style={{ fontWeight: 700, color: "#00d4b2", marginBottom: "3px" }}>
-                          🌟 Temsilci İkna / Kriz Skoru: %{selected.metadata_json.agent_retention_score} {selected.metadata_json.was_deescalated ? "🟢 (Kriz Çözüldü)" : ""}
+                          🌟 Temsilci İkna / Kriz Skoru: %
+                          {selected.metadata_json.agent_retention_score}{" "}
+                          {selected.metadata_json.was_deescalated ? "🟢 (Kriz Çözüldü)" : ""}
                         </div>
                         <div style={{ color: "var(--text-secondary)", fontSize: "0.72rem" }}>
-                          🗣️ Dolgu Oranı: %{selected.metadata_json.average_filler_ratio || 0} | 💰 Tutar: {selected.metadata_json.detected_prices?.join(", ") || "Yok"}
+                          🗣️ Dolgu Oranı: %{selected.metadata_json.average_filler_ratio || 0} | 💰
+                          Tutar: {selected.metadata_json.detected_prices?.join(", ") || "Yok"}
                         </div>
+                      </div>
+                    )}
+                    {selected.metadata_json.competitors_mentioned?.length > 0 && (
+                      <div
+                        style={{
+                          marginTop: "0.8rem",
+                          padding: "0.6rem",
+                          background: "rgba(239, 68, 68, 0.1)",
+                          border: "1px solid rgba(239, 68, 68, 0.3)",
+                          borderRadius: "8px",
+                          fontSize: "0.78rem",
+                          color: "#FCA5A5",
+                        }}
+                      >
+                        📢 Rekabet Alarmı: Rakip firma anıldı →{" "}
+                        <strong>{selected.metadata_json.competitors_mentioned.join(", ")}</strong>
+                      </div>
+                    )}
+                    {selected.metadata_json.customer_average_wpm > 0 && (
+                      <div
+                        style={{
+                          marginTop: "0.5rem",
+                          fontSize: "0.72rem",
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        ⏱️ Akustik Stres: {selected.metadata_json.customer_average_wpm} WPM (müşteri
+                        konuşma hızı)
                       </div>
                     )}
                   </div>
@@ -452,7 +1253,8 @@ export default function ConversationsPage() {
                                 : "#EF4444",
                         }}
                       >
-                        %{selected.metadata_json.discourse_metrics.fcr_score} ({selected.metadata_json.discourse_metrics.fcr_status})
+                        %{selected.metadata_json.discourse_metrics.fcr_score} (
+                        {selected.metadata_json.discourse_metrics.fcr_status})
                       </div>
                       <div
                         style={{
@@ -519,7 +1321,8 @@ export default function ConversationsPage() {
                     </div>
                   )}
 
-                  {selected.metadata_json?.discourse_metrics?.agent_adherence_score !== undefined && (
+                  {selected.metadata_json?.discourse_metrics?.agent_adherence_score !==
+                    undefined && (
                     <div
                       className="glass-panel"
                       style={{
@@ -566,7 +1369,9 @@ export default function ConversationsPage() {
                           lineHeight: 1.4,
                         }}
                       >
-                        {selected.metadata_json.discourse_metrics.adherence_checks_passed?.join(", ") || "Başarılı kontrol yok"}
+                        {selected.metadata_json.discourse_metrics.adherence_checks_passed?.join(
+                          ", "
+                        ) || "Başarılı kontrol yok"}
                       </div>
                     </div>
                   )}
@@ -618,7 +1423,8 @@ export default function ConversationsPage() {
                           lineHeight: 1.4,
                         }}
                       >
-                        {selected.metadata_json.mos_metrics.quality_grade} • SNR: {selected.metadata_json.mos_metrics.snr_db}dB
+                        {selected.metadata_json.mos_metrics.quality_grade} • SNR:{" "}
+                        {selected.metadata_json.mos_metrics.snr_db}dB
                       </div>
                       {selected.metadata_json.mos_metrics.noc_alert && (
                         <div
@@ -635,6 +1441,144 @@ export default function ConversationsPage() {
                           {selected.metadata_json.mos_metrics.noc_alert}
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {selected.metadata_json?.toxicity && (
+                    <div
+                      className="glass-panel"
+                      style={{
+                        padding: "1rem",
+                        background: "rgba(255,255,255,0.03)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: "10px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.5rem",
+                          fontSize: "0.75rem",
+                          color: "var(--text-muted)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.5px",
+                          marginBottom: "0.4rem",
+                        }}
+                      >
+                        <span>🧪</span>
+                        <span>Toksisite Analiz Sonucu</span>
+                      </div>
+                      <div
+                        style={{
+                          display: "inline-block",
+                          padding: "0.2rem 0.6rem",
+                          borderRadius: "20px",
+                          fontSize: "0.78rem",
+                          fontWeight: 700,
+                          marginBottom: "0.5rem",
+                          background: selected.metadata_json.toxicity.is_clean
+                            ? "rgba(16,185,129,0.15)"
+                            : "rgba(239,68,68,0.15)",
+                          color: selected.metadata_json.toxicity.is_clean ? "#6EE7B7" : "#FCA5A5",
+                        }}
+                      >
+                        {selected.metadata_json.toxicity.is_clean
+                          ? "Temiz İçerik"
+                          : "İnceleme Gerekli"}
+                      </div>
+                      <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+                        Toksisite Oranı: %
+                        {(selected.metadata_json.toxicity.toxicity_rate * 100).toFixed(1)}
+                      </div>
+                      {selected.metadata_json.toxicity.matched_terms?.length > 0 && (
+                        <div style={{ fontSize: "0.75rem", color: "#FCA5A5", marginTop: "0.4rem" }}>
+                          Tespit edilen: {selected.metadata_json.toxicity.matched_terms.join(", ")}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {selected.metadata_json?.call_summary && (
+                    <div
+                      className="glass-panel"
+                      style={{
+                        padding: "1rem",
+                        background: "rgba(255,255,255,0.03)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: "10px",
+                        gridColumn: "1 / -1",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.5rem",
+                          fontSize: "0.75rem",
+                          color: "var(--text-muted)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.5px",
+                          marginBottom: "0.6rem",
+                        }}
+                      >
+                        <span>📝</span>
+                        <span>CRM Kapanış Notu (Auto-Note)</span>
+                      </div>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                          gap: "0.6rem",
+                          fontSize: "0.8rem",
+                          marginBottom: "0.6rem",
+                        }}
+                      >
+                        <div>
+                          <div style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>
+                            Müşteri
+                          </div>
+                          <div style={{ color: "#fff" }}>
+                            {selected.metadata_json.call_summary.intent}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>
+                            Sorun
+                          </div>
+                          <div style={{ color: "#fff" }}>
+                            {selected.metadata_json.call_summary.issue}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>
+                            İşlem
+                          </div>
+                          <div style={{ color: "#fff" }}>
+                            {selected.metadata_json.call_summary.action}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>
+                            Sonuç
+                          </div>
+                          <div style={{ color: "#fff" }}>
+                            {selected.metadata_json.call_summary.resolution}
+                          </div>
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          borderTop: "1px solid rgba(255,255,255,0.08)",
+                          paddingTop: "0.6rem",
+                          fontSize: "0.8rem",
+                          color: "var(--text-secondary)",
+                          fontStyle: "italic",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {selected.metadata_json.call_summary.executive_summary}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -719,7 +1663,10 @@ export default function ConversationsPage() {
                     {selected.metadata_json.crosstalk_events.map((ev, i) => {
                       const totalSec = selected.duration_sec || 300;
                       const leftPct = Math.min(100, Math.max(0, (ev.start / totalSec) * 100));
-                      const widthPct = Math.min(100 - leftPct, Math.max(1, (ev.duration / totalSec) * 100));
+                      const widthPct = Math.min(
+                        100 - leftPct,
+                        Math.max(1, (ev.duration / totalSec) * 100)
+                      );
                       return (
                         <div
                           key={i}
@@ -737,9 +1684,23 @@ export default function ConversationsPage() {
                       );
                     })}
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.7rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.75rem" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: "0.7rem",
+                      color: "rgba(255,255,255,0.4)",
+                      marginBottom: "0.75rem",
+                    }}
+                  >
                     <span>0:00</span>
-                    <span>Görüşme Süresi ({selected.duration_sec ? `${Math.floor(selected.duration_sec / 60)}:${String(selected.duration_sec % 60).padStart(2, '0')}` : '05:00'})</span>
+                    <span>
+                      Görüşme Süresi (
+                      {selected.duration_sec
+                        ? `${Math.floor(selected.duration_sec / 60)}:${String(selected.duration_sec % 60).padStart(2, "0")}`
+                        : "05:00"}
+                      )
+                    </span>
                   </div>
 
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
@@ -765,7 +1726,8 @@ export default function ConversationsPage() {
                         }}
                       >
                         <span style={{ fontWeight: "bold", color: "#fff" }}>
-                          ⏱️ {Math.floor(ev.start / 60)}:{String(Math.floor(ev.start % 60)).padStart(2, "0")}
+                          ⏱️ {Math.floor(ev.start / 60)}:
+                          {String(Math.floor(ev.start % 60)).padStart(2, "0")}
                         </span>
                         <span>•</span>
                         <span>{ev.description}</span>
@@ -786,22 +1748,48 @@ export default function ConversationsPage() {
                     marginBottom: "1.25rem",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: "0.75rem",
+                    }}
+                  >
                     <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                       <span style={{ fontSize: "1.25rem" }}>🎙️</span>
                       <strong style={{ color: "#60A5FA", fontSize: "0.95rem" }}>
                         Akustik F0 Ses Perdesi ve Frekans Ayrışma Paneli (Pitch & Formant Analysis)
                       </strong>
                     </div>
-                    <span style={{ background: "rgba(59, 130, 246, 0.2)", color: "#93C5FD", padding: "0.2rem 0.6rem", borderRadius: "20px", fontSize: "0.75rem", fontWeight: "bold" }}>
+                    <span
+                      style={{
+                        background: "rgba(59, 130, 246, 0.2)",
+                        color: "#93C5FD",
+                        padding: "0.2rem 0.6rem",
+                        borderRadius: "20px",
+                        fontSize: "0.75rem",
+                        fontWeight: "bold",
+                      }}
+                    >
                       %98.4 Akustik İzolasyon
                     </span>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.75rem" }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                      gap: "0.75rem",
+                    }}
+                  >
                     {Object.entries(selected.metadata_json.pitch_profiles).map(([spk, prof]) => {
-                      const isAg = spk === selected.metadata_json?.agent_speaker_id || spk === "SPEAKER_00";
-                      const isCu = spk === selected.metadata_json?.customer_speaker_id || spk === "SPEAKER_01";
-                      const isSu = spk === selected.metadata_json?.supervisor_speaker_id || spk === "SPEAKER_02";
+                      const isAg =
+                        spk === selected.metadata_json?.agent_speaker_id || spk === "SPEAKER_00";
+                      const isCu =
+                        spk === selected.metadata_json?.customer_speaker_id || spk === "SPEAKER_01";
+                      const isSu =
+                        spk === selected.metadata_json?.supervisor_speaker_id ||
+                        spk === "SPEAKER_02";
                       return (
                         <div
                           key={spk}
@@ -812,16 +1800,51 @@ export default function ConversationsPage() {
                             padding: "0.75rem",
                           }}
                         >
-                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.4rem" }}>
-                            <span style={{ fontWeight: "bold", fontSize: "0.85rem", color: isAg ? "#93C5FD" : isCu ? "#6EE7B7" : "#D8B4FE" }}>
-                              {isAg ? "👤 Temsilci" : isCu ? "🎧 Müşteri" : isSu ? "👔 Uzman/Lider" : spk} ({spk})
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              marginBottom: "0.4rem",
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontWeight: "bold",
+                                fontSize: "0.85rem",
+                                color: isAg ? "#93C5FD" : isCu ? "#6EE7B7" : "#D8B4FE",
+                              }}
+                            >
+                              {isAg
+                                ? "👤 Temsilci"
+                                : isCu
+                                  ? "🎧 Müşteri"
+                                  : isSu
+                                    ? "👔 Uzman/Lider"
+                                    : spk}{" "}
+                              ({spk})
                             </span>
                             <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.6)" }}>
                               Güven: %{prof.confidence_pct}
                             </span>
                           </div>
-                          <div style={{ fontSize: "1.1rem", fontWeight: "800", color: "#fff", marginBottom: "0.2rem" }}>
-                            {prof.f0_mean_hz} Hz <span style={{ fontSize: "0.75rem", fontWeight: "normal", color: "var(--text-dim)" }}>({prof.f0_range})</span>
+                          <div
+                            style={{
+                              fontSize: "1.1rem",
+                              fontWeight: "800",
+                              color: "#fff",
+                              marginBottom: "0.2rem",
+                            }}
+                          >
+                            {prof.f0_mean_hz} Hz{" "}
+                            <span
+                              style={{
+                                fontSize: "0.75rem",
+                                fontWeight: "normal",
+                                color: "var(--text-dim)",
+                              }}
+                            >
+                              ({prof.f0_range})
+                            </span>
                           </div>
                           <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)" }}>
                             🎵 {prof.voice_type}
@@ -838,29 +1861,47 @@ export default function ConversationsPage() {
                   <div className="call-timeline-header">
                     <span>📊 Duygu ve Akış Isı Haritası (Call Timeline)</span>
                     <div className="call-timeline-legend">
-                      <span className="legend-item"><span className="legend-dot pos"></span> Pozitif</span>
-                      <span className="legend-item"><span className="legend-dot neg"></span> Öfkeli/Negatif</span>
-                      <span className="legend-item"><span className="legend-dot int"></span> ⚡ Söz Kesme</span>
-                      <span className="legend-item"><span className="legend-dot ivr"></span> 🤖 IVR</span>
+                      <span className="legend-item">
+                        <span className="legend-dot pos"></span> Pozitif
+                      </span>
+                      <span className="legend-item">
+                        <span className="legend-dot neg"></span> Öfkeli/Negatif
+                      </span>
+                      <span className="legend-item">
+                        <span className="legend-dot int"></span> ⚡ Söz Kesme
+                      </span>
+                      <span className="legend-item">
+                        <span className="legend-dot ivr"></span> 🤖 IVR
+                      </span>
                     </div>
                   </div>
                   <div className="call-timeline-bar">
                     {selected.segments.map((seg, idx) => {
                       const dur = Math.max((seg.end || 0) - (seg.start || 0), 1.0);
-                      const totalDur = Math.max(...selected.segments.map(s => s.end || 1), 10);
+                      const totalDur = Math.max(...selected.segments.map((s) => s.end || 1), 10);
                       const widthPct = Math.max((dur / totalDur) * 100, 1.5);
                       const emotion = seg.emotion_category || seg.emotion || null;
-                      const score = typeof seg.sentiment_score === "number" ? seg.sentiment_score : null;
+                      const score =
+                        typeof seg.sentiment_score === "number" ? seg.sentiment_score : null;
                       const isIvr = seg.speaker && seg.speaker.includes("IVR");
-                      
+
                       let barClass = "timeline-slice neutral";
-                      let titleStr = `${formatTime(seg.start)} - ${seg.speaker || 'Konuşmacı'}: ${seg.text?.slice(0,40)}...`;
-                      if (seg.is_interruption) { barClass = "timeline-slice interruption"; titleStr = `⚡ Söz Kesme: ${titleStr}`; }
-                      else if (isIvr) { barClass = "timeline-slice ivr"; titleStr = `🤖 IVR / Santral: ${titleStr}`; }
-                      else if (emotion === "Öfke" || (score !== null && score < -0.2)) { barClass = "timeline-slice negative"; }
-                      else if (emotion === "Memnuniyet" || (score !== null && score > 0.2)) { barClass = "timeline-slice positive"; }
-                      else if (seg.speaker === "SPEAKER_00") { barClass = "timeline-slice agent"; }
-                      else if (seg.speaker === "SPEAKER_01") { barClass = "timeline-slice customer"; }
+                      let titleStr = `${formatTime(seg.start)} - ${seg.speaker || "Konuşmacı"}: ${seg.text?.slice(0, 40)}...`;
+                      if (seg.is_interruption) {
+                        barClass = "timeline-slice interruption";
+                        titleStr = `⚡ Söz Kesme: ${titleStr}`;
+                      } else if (isIvr) {
+                        barClass = "timeline-slice ivr";
+                        titleStr = `🤖 IVR / Santral: ${titleStr}`;
+                      } else if (emotion === "Öfke" || (score !== null && score < -0.2)) {
+                        barClass = "timeline-slice negative";
+                      } else if (emotion === "Memnuniyet" || (score !== null && score > 0.2)) {
+                        barClass = "timeline-slice positive";
+                      } else if (seg.speaker === "SPEAKER_00") {
+                        barClass = "timeline-slice agent";
+                      } else if (seg.speaker === "SPEAKER_01") {
+                        barClass = "timeline-slice customer";
+                      }
 
                       return (
                         <div
@@ -874,186 +1915,6 @@ export default function ConversationsPage() {
                   </div>
                 </div>
               )}
-
-              <div className="transcript-box">
-                {selected.segments.map((seg, _idx) => {
-                  const segHits = selected.hits.filter(
-                    (h) => Math.abs(h.timestamp_sec - seg.start) < 0.5
-                  );
-                  const meta = selected.metadata_json || {};
-                  const isIvr = seg.speaker && seg.speaker.includes("IVR");
-                  const isAgent =
-                    !isIvr &&
-                    seg.speaker &&
-                    (meta.agent_speaker_id
-                      ? seg.speaker === meta.agent_speaker_id
-                      : seg.speaker === "SPEAKER_00");
-                  const isCustomer =
-                    !isIvr &&
-                    seg.speaker &&
-                    (meta.customer_speaker_id
-                      ? seg.speaker === meta.customer_speaker_id
-                      : seg.speaker === "SPEAKER_01");
-                  const isSupervisor =
-                    !isIvr &&
-                    !isAgent &&
-                    !isCustomer &&
-                    seg.speaker &&
-                    (meta.supervisor_speaker_id
-                      ? seg.speaker === meta.supervisor_speaker_id
-                      : seg.speaker === "SPEAKER_02" || seg.speaker.includes("SPEAKER_02"));
-
-                  // Determine emotion badge from segment metadata if available
-                  const emotion = seg.emotion_category || seg.emotion || null;
-                  const sentimentScore =
-                    typeof seg.sentiment_score === "number" ? seg.sentiment_score : null;
-
-                  let emotionClass = "neutral";
-                  let emotionLabel = null;
-                  if (emotion) {
-                    if (emotion === "Öfke") { emotionClass = "negative"; emotionLabel = "😡 Öfkeli"; }
-                    else if (emotion === "Hayal Kırıklığı") { emotionClass = "negative"; emotionLabel = "😞 Hayal Kırıklığı"; }
-                    else if (emotion === "Memnuniyet") { emotionClass = "positive"; emotionLabel = "😊 Memnun"; }
-                    else if (emotion === "Endişe") { emotionClass = "anxious"; emotionLabel = "😟 Endişeli"; }
-                    else if (emotion === "Nötr İletişim") { emotionClass = "neutral"; emotionLabel = null; }
-                  } else if (sentimentScore !== null) {
-                    if (sentimentScore > 0.2) { emotionClass = "positive"; emotionLabel = "😊 Pozitif"; }
-                    else if (sentimentScore < -0.2) { emotionClass = "negative"; emotionLabel = "😟 Negatif"; }
-                  }
-
-                  const rowClass = `transcript-row${
-                    isIvr ? " is-ivr" : isAgent ? " is-agent" : isCustomer ? " is-customer" : isSupervisor ? " is-supervisor" : ""
-                  }`;
-                  const avatarClass = isIvr
-                    ? "t-avatar ivr-avatar"
-                    : isAgent
-                    ? "t-avatar agent-avatar"
-                    : isCustomer
-                      ? "t-avatar customer-avatar"
-                      : isSupervisor
-                        ? "t-avatar supervisor-avatar"
-                        : "t-avatar unknown-avatar";
-                  const bubbleClass = isIvr
-                    ? "t-bubble ivr-bubble"
-                    : isAgent
-                    ? "t-bubble agent-bubble"
-                    : isCustomer
-                      ? "t-bubble customer-bubble"
-                      : isSupervisor
-                        ? "t-bubble supervisor-bubble"
-                        : "t-bubble unknown-bubble";
-
-                  const avatarIcon = isIvr ? "🤖" : isAgent ? "👤" : isCustomer ? "🎧" : isSupervisor ? "👔" : "💬";
-                  const speakerName = isIvr
-                    ? `Santral / IVR`
-                    : isAgent
-                    ? `Temsilci`
-                    : isCustomer
-                      ? `Müşteri`
-                      : isSupervisor
-                        ? `Uzman / Takım Lideri`
-                        : seg.speaker || "Bilinmeyen";
-
-                  return (
-                    <div className={rowClass} key={seg.id}>
-                      <div className={avatarClass} style={isSupervisor ? { background: "#7E22CE", color: "#fff" } : {}}>{avatarIcon}</div>
-                      <div className="t-content">
-                        <div className="t-meta">
-                          <span
-                            className={`t-speaker-label${
-                              isIvr
-                                ? " ivr-label"
-                                : isAgent
-                                ? " agent-label"
-                                : isCustomer
-                                  ? " customer-label"
-                                  : isSupervisor
-                                    ? " supervisor-label"
-                                    : ""
-                            }`}
-                            style={isSupervisor ? { color: "#D8B4FE", fontWeight: "bold" } : {}}
-                          >
-                            {speakerName}
-                            {seg.speaker ? (
-                              <span
-                                style={{
-                                  fontWeight: 400,
-                                  color: "var(--text-dim)",
-                                  marginLeft: "0.3rem",
-                                }}
-                              >
-                                ({seg.speaker})
-                              </span>
-                            ) : null}
-                            <select
-                              value={seg.speaker || "SPEAKER_00"}
-                              onChange={async (e) => {
-                                const newSpk = e.target.value;
-                                try {
-                                  await api.reassignSpeaker(selected.id, seg.id, newSpk);
-                                  const updatedSegs = selected.segments.map((s) =>
-                                    s.id === seg.id ? { ...s, speaker: newSpk, auto_corrected: false, rlhf_corrected: true } : s
-                                  );
-                                  setSelected({ ...selected, segments: updatedSegs });
-                                  alert(`✅ Konuşmacı etiketi '${newSpk}' olarak güncellendi ve Akustik RLHF ses izi matrisine geri bildirim eklendi.`);
-                                } catch (err) {
-                                  alert("Konuşmacı güncellenemedi: " + err.message);
-                                }
-                              }}
-                              style={{
-                                marginLeft: "0.6rem",
-                                background: "rgba(255, 255, 255, 0.1)",
-                                border: "1px solid rgba(255, 255, 255, 0.2)",
-                                borderRadius: "6px",
-                                color: "#fff",
-                                fontSize: "0.75rem",
-                                padding: "0.1rem 0.4rem",
-                                cursor: "pointer",
-                              }}
-                              title="QA Uzmanı: Konuşmacıyı düzeltin ve yapay zeka biyometri motorunu itin (Active Learning)"
-                            >
-                              <option value="SPEAKER_00">👤 Temsilci (SPEAKER_00)</option>
-                              <option value="SPEAKER_01">🎧 Müşteri (SPEAKER_01)</option>
-                              <option value="SPEAKER_02">👔 Uzman/Lider (SPEAKER_02)</option>
-                            </select>
-                          </span>
-                          <span className="t-time">
-                            {seg.is_interruption && (
-                              <span className="badge-interruption" title="Müşteri ve temsilcinin aynı anda konuştuğu söz kesme anı">
-                                ⚡ Söz Kesme
-                              </span>
-                            )}
-                            {seg.auto_corrected && (
-                              <span className="badge-autocorrect" title="Yapay zeka anlamsal bütüne bakarak rolü otomatik doğruladı">
-                                🤖 AI Doğrulanmış
-                              </span>
-                            )}
-                            {seg.rlhf_corrected && (
-                              <span className="badge-autocorrect" style={{ background: "rgba(168, 85, 247, 0.2)", color: "#D8B4FE", border: "1px solid #A855F7" }} title="QA Uzmanı tarafından düzeltilip RLHF modeline öğretildi">
-                                🧠 RLHF Eğitildi
-                              </span>
-                            )}
-                            {formatTime(seg.start)}
-                          </span>
-                        </div>
-                        <div className={bubbleClass}>
-                          {renderHighlightedText(
-                            seg.text,
-                            segHits,
-                            seg.words || (meta.word_level_diarization ? meta.word_level_diarization.find((w) => w.segment_index === _idx)?.words : null),
-                            { ...meta, current_seg_speaker: seg.speaker }
-                          )}
-                        </div>
-                        {emotionLabel && (
-                          <span className={`t-emotion ${emotionClass}`}>
-                            {emotionLabel}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
             </>
           )}
         </div>
