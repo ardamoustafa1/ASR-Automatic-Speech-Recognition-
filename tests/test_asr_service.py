@@ -69,7 +69,7 @@ def test_transcribe_stereo(mock_decode, mock_is_stereo):
 
     call_count = [0]
 
-    def mock_single_ch(audio, language="tr"):
+    def mock_single_ch(audio, language="tr", sector="telecom"):
         call_count[0] += 1
         if call_count[0] == 1:
             return [TranscriptionSegment(start=0.0, end=1.0, text="Merhaba agent")], 1.0
