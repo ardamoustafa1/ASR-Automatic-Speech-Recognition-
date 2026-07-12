@@ -99,6 +99,9 @@ def save_conversation_with_analysis(
     speakers: list[str] | None = None,
     metadata: dict | None = None,
     agent_id: str | None = None,
+    # When set, update this pre-created placeholder row (upload lifecycle)
+    # instead of inserting a new conversation.
+    conversation_id: str | None = None,
 ) -> dict:
     from asr_pro.core.churn_engine import analyze_churn_risk
     from asr_pro.core.compliance_engine import analyze_compliance_risk
@@ -146,6 +149,21 @@ def save_conversation_with_analysis(
             "conversation may mix both parties' speech."
         )
 
+    # 1b. KVKK / PCI-DSS PII redaction - card numbers, TCKN, IBANs and phone
+    # numbers read aloud during identity verification must never reach the
+    # database. Runs after diarization (which only reads timings/audio) and
+    # before every text consumer below (keyword/NLP engines, persistence).
+    pii_counts: dict[str, int] = {}
+    from asr_pro.config import settings as _settings
+
+    if _settings.pii_redaction_enabled:
+        from asr_pro.services.pii_redaction import redact_pii, redact_segments
+
+        segments = list(segments)
+        pii_counts = redact_segments(segments)
+        if pii_counts:
+            full_transcript = redact_pii(full_transcript).text
+
     # 2. Analyze Keyword Rules & Topics
     with time_block(nlp_engine_duration_seconds, engine="keyword"):
         rules = rules_from_db(db, sector)
@@ -170,6 +188,35 @@ def save_conversation_with_analysis(
             segments, domain_key=sector, agent_speaker_id=agent_speaker_id
         )
 
+    # 6. Profanity / abusive language (both parties - a customer's outburst
+    # matters to churn/escalation review just as much as agent misconduct).
+    toxicity_result = None
+    if _settings.toxicity_detection_enabled:
+        with time_block(nlp_engine_duration_seconds, engine="toxicity"):
+            from asr_pro.core.toxicity_engine import analyze_toxicity
+
+            toxicity_result = analyze_toxicity(segments)
+
+    # 7. CRM auto-note: structured intent/issue/action/resolution + a short
+    # executive summary, reusing the already-loaded zero-shot classifier.
+    # Skipped under the test-mode flag (matching DiarizationService/
+    # VADService's convention) - it makes four sequential zero-shot calls on
+    # top of what empathy/churn already make, which is enough model-calling
+    # pressure in a heavy multi-native-library test process (torch + numba +
+    # sklearn + pyarrow all loaded at once) to crash the interpreter; that's
+    # a test-environment resource issue, not a production one.
+    from asr_pro.config import _is_testing as _asr_is_testing
+
+    call_summary = None
+    if _settings.crm_summary_enabled and not _asr_is_testing:
+        with time_block(nlp_engine_duration_seconds, engine="summary"):
+            from asr_pro.core.summary_engine import generate_crm_summary
+
+            try:
+                call_summary = generate_crm_summary(full_transcript, sector=sector)
+            except Exception as exc:
+                logger.warning(f"CRM summary generation failed, skipping: {exc}")
+
     duration = max((s.end for s in segments), default=0.0)
 
     # Never report a confident-looking score off an unreliable speaker split -
@@ -193,12 +240,49 @@ def save_conversation_with_analysis(
     final_metadata["average_filler_ratio"] = getattr(churn_result, "average_filler_ratio", 0.0)
     final_metadata["detected_prices"] = list(getattr(churn_result, "detected_prices", ()))
     final_metadata["churn_trajectory"] = list(getattr(churn_result, "trajectory", ()))
+    # These were computed by analyze_churn_risk / analyze_soft_skills all
+    # along but never made it past this function - a real reviewer needs
+    # WHICH competitor was named and WHICH specific phrases drove the
+    # empathy score, not just the final numbers.
+    final_metadata["competitors_mentioned"] = list(
+        getattr(churn_result, "competitors_mentioned", ())
+    )
+    final_metadata["customer_average_wpm"] = getattr(churn_result, "average_wpm", 0)
     final_metadata["empathy_score"] = empathy_result.score
     final_metadata["empathy_summary"] = empathy_summary
+    final_metadata["empathy_breakdown"] = {
+        "active_listening_hits": list(empathy_result.active_listening_hits),
+        "compassion_hits": list(empathy_result.compassion_hits),
+        "solution_hits": list(empathy_result.solution_hits),
+        "defensive_hits": list(empathy_result.defensive_hits),
+        "interruption_count": empathy_result.interruption_count,
+        "crisis_management_bonus": empathy_result.crisis_management_bonus,
+        "high_wpm_penalty": empathy_result.high_wpm_penalty,
+        "agent_wpm_avg": empathy_result.agent_wpm_avg,
+    }
     final_metadata["agent_speaker_id"] = agent_speaker_id
     final_metadata["customer_speaker_id"] = customer_speaker_id
     final_metadata["speaker_separation_reliable"] = speaker_separation_reliable
+    if toxicity_result is not None:
+        final_metadata["toxicity"] = {
+            "is_clean": toxicity_result.is_clean,
+            "toxicity_rate": toxicity_result.toxicity_rate,
+            "matched_terms": list(toxicity_result.matched_terms),
+            "flagged_segments": list(toxicity_result.flagged_segments),
+        }
+    if call_summary is not None:
+        final_metadata["call_summary"] = {
+            "intent": call_summary.intent,
+            "issue": call_summary.issue,
+            "action": call_summary.action,
+            "resolution": call_summary.resolution,
+            "executive_summary": call_summary.executive_summary,
+        }
     final_metadata["diarization_method"] = diarization_method
+    final_metadata["pii_redaction"] = {
+        "enabled": _settings.pii_redaction_enabled,
+        "masked_counts": pii_counts,
+    }
     final_metadata["compliance_violations"] = [
         {
             "severity": v.severity,
@@ -257,18 +341,37 @@ def save_conversation_with_analysis(
         }
     )
 
-    conv = Conversation(
-        id=new_uuid(),
-        agent_id=agent_id,
-        sector=sector,
-        duration_sec=duration,
-        audio_path=audio_path,
-        full_transcript=full_transcript,
-        asr_confidence=asr_confidence,
-        quality_gate_passed=quality_gate_passed,
-        metadata_json=final_metadata,
-    )
-    db.add(conv)
+    if conversation_id:
+        # Upload flow: a placeholder row (status="processing") was created
+        # when the upload was accepted, so the UI could show the job the
+        # whole time - fill it in rather than inserting a duplicate.
+        conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+        if conv is None:
+            raise ValueError(f"Conversation {conversation_id} not found for update")
+        conv.agent_id = agent_id
+        conv.sector = sector
+        conv.duration_sec = duration
+        conv.audio_path = audio_path
+        conv.full_transcript = full_transcript
+        conv.asr_confidence = asr_confidence
+        conv.quality_gate_passed = quality_gate_passed
+        conv.metadata_json = final_metadata
+        conv.status = "completed"
+        conv.error_message = None
+    else:
+        conv = Conversation(
+            id=new_uuid(),
+            agent_id=agent_id,
+            sector=sector,
+            duration_sec=duration,
+            audio_path=audio_path,
+            full_transcript=full_transcript,
+            asr_confidence=asr_confidence,
+            quality_gate_passed=quality_gate_passed,
+            metadata_json=final_metadata,
+            status="completed",
+        )
+        db.add(conv)
     db.flush()
 
     seg_rows: dict[int, str] = {}
@@ -281,12 +384,29 @@ def save_conversation_with_analysis(
             text=seg.text,
             speaker=seg.speaker
             or (speakers[idx] if speakers and idx < len(speakers) else "SPEAKER_00"),
-            avg_logprob=getattr(segments_data[idx], "avg_logprob", -1.0)
-            if idx < len(segments_data)
-            else -1.0,
+            # Prefer the segment's own confidence (SegmentInput carries it
+            # through diarization); fall back to the pre-diarization list.
+            avg_logprob=getattr(seg, "avg_logprob", None)
+            if getattr(seg, "avg_logprob", -1.0) != -1.0
+            else (
+                getattr(segments_data[idx], "avg_logprob", -1.0)
+                if idx < len(segments_data)
+                else -1.0
+            ),
+            raw_text=getattr(seg, "raw_text", "") or "",
         )
         db.add(row)
         seg_rows[idx] = row.id
+
+    # Force the segment INSERTs to hit the DB before the keyword_hits INSERTs
+    # below reference them by segment_id. SQLAlchemy's flush only orders
+    # dependent tables automatically when an ORM relationship() links the
+    # mapped classes - TranscriptSegmentRow/KeywordHit are linked by a plain
+    # FK column, so without this explicit flush, PostgreSQL (which enforces
+    # FK constraints, unlike SQLite's default) rejects the batched commit
+    # with a ForeignKeyViolation on every conversation that has any keyword
+    # hits at all.
+    db.flush()
 
     for hit in hits:
         db.add(
