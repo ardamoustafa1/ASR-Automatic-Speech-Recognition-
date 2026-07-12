@@ -46,6 +46,13 @@ class Conversation(Base):
     asr_confidence: Mapped[float] = mapped_column(Float, default=0.0)
     quality_gate_passed: Mapped[bool] = mapped_column(Boolean, default=True)
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Upload-processing lifecycle: "processing" (placeholder row created when
+    # the upload is accepted, transcription still running), "completed", or
+    # "failed" (error_message says why). Before this existed, a failed upload
+    # simply never appeared anywhere - the user had no way to distinguish
+    # "still working" from "silently crashed".
+    status: Mapped[str] = mapped_column(String(16), default="completed", index=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -59,6 +66,11 @@ class TranscriptSegmentRow(Base):
     start: Mapped[float] = mapped_column(Float, default=0.0)
     end: Mapped[float] = mapped_column(Float, default=0.0)
     text: Mapped[str] = mapped_column(Text, default="")
+    # Text exactly as Whisper produced it, before DomainAdaptationService's
+    # phonetic corrections mutated it in place. Kept for compliance/QA audit
+    # ("what did the model actually hear vs. what did we correct it to") -
+    # empty string when unchanged, so the common case costs nothing to check.
+    raw_text: Mapped[str] = mapped_column(Text, default="")
     speaker: Mapped[str | None] = mapped_column(String(64), nullable=True)
     avg_logprob: Mapped[float] = mapped_column(Float, default=-1.0)
 
