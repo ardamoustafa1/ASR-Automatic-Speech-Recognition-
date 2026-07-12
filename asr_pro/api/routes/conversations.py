@@ -3,7 +3,8 @@ from __future__ import annotations
 
 """API route: conversations — list, detail, and analysis endpoints."""
 
-import shutil
+import os
+from typing import Any
 
 from fastapi import (
     APIRouter,
@@ -14,6 +15,7 @@ from fastapi import (
     Request,
     UploadFile,
 )
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -30,7 +32,7 @@ from asr_pro.api.schemas.conversations import (
     KeywordHitOut,
     SegmentOut,
 )
-from asr_pro.config import TEMP_AUDIO_DIR
+from asr_pro.config import TEMP_AUDIO_DIR, settings
 from asr_pro.core.keyword_engine import SegmentInput, hits_to_dict
 from asr_pro.db.models import (
     AuditLog,
@@ -54,7 +56,13 @@ router = APIRouter(
 )
 
 
-def _log_audit_view(db: Session, current_user: AuthUser, action: str, conversation_id: str) -> None:
+def _log_audit_view(
+    db: Session,
+    current_user: AuthUser,
+    action: str,
+    conversation_id: str,
+    extra_details: dict | None = None,
+) -> None:
     """Record a 'who viewed/exported what, when' audit entry for sensitive transcript access."""
     db_user = db.query(DBUser).filter(DBUser.username == current_user.username).first()
     db.add(
@@ -63,7 +71,7 @@ def _log_audit_view(db: Session, current_user: AuthUser, action: str, conversati
             username=current_user.username,
             action=action,
             target_resource=f"/conversations/{conversation_id}",
-            details={"role": current_user.role},
+            details={"role": current_user.role, **(extra_details or {})},
         )
     )
     db.commit()
@@ -106,6 +114,8 @@ def list_conversations(
             created_at=c.created_at.isoformat() if c.created_at else "",
             hit_count=hit_count_map.get(c.id, 0),
             metadata_json=c.metadata_json,
+            status=c.status or "completed",
+            error_message=c.error_message,
         )
         for c in convs
     ]
@@ -152,8 +162,18 @@ def get_conversation(
         hit_count=len(hits),
         topics=topics,
         metadata_json=conv.metadata_json,
+        status=conv.status or "completed",
+        error_message=conv.error_message,
         segments=[
-            SegmentOut(id=s.id, start=s.start, end=s.end, text=s.text, speaker=s.speaker)
+            SegmentOut(
+                id=s.id,
+                start=s.start,
+                end=s.end,
+                text=s.text,
+                speaker=s.speaker,
+                avg_logprob=s.avg_logprob,
+                raw_text=s.raw_text,
+            )
             for s in segments
         ],
         hits=[
@@ -198,44 +218,84 @@ def _process_analysis_background(
 
 
 def _process_audio_upload_background(
-    file_path: str, filename: str, sector: str, agent_id: str | None = None
+    file_path: str,
+    filename: str,
+    sector: str,
+    agent_id: str | None = None,
+    conversation_id: str | None = None,
 ) -> None:
     """Background task: transcribe audio file and run full NLP + Diarization analysis."""
+    import time as _time
+
     from loguru import logger
+
+    from asr_pro.services.asr_service import (
+        get_filtered_segment_count,
+        reset_filtered_segment_counter,
+    )
+    from asr_pro.services.domain_adaptation import (
+        get_correction_count,
+        reset_correction_counter,
+    )
 
     db = SessionLocal()
     try:
         logger.info(f"Starting background ASR transcription for uploaded file: {filename}")
         asr = ASRService.get_instance()
-        transcribe_res = asr.transcribe(file_path)
+        reset_filtered_segment_counter()
+        reset_correction_counter()
+        transcribe_started = _time.perf_counter()
+        transcribe_res = asr.transcribe(file_path, sector=sector)
+        processing_time_sec = round(_time.perf_counter() - transcribe_started, 2)
+        filtered_segment_count = get_filtered_segment_count()
+        domain_correction_count = get_correction_count()
+
         if isinstance(transcribe_res, tuple) and len(transcribe_res) >= 2:
             raw_segments = transcribe_res[0]
-            confidence = 0.85
+            audio_duration_sec = float(transcribe_res[1] or 0.0)
+            # Real decoder confidence (duration-weighted mean of per-segment
+            # exp(avg_logprob)), not a fabricated constant.
+            confidence = ASRService.compute_confidence(raw_segments)
             full_text = " ".join(getattr(s, "text", "") for s in raw_segments)
         elif isinstance(transcribe_res, dict):
             raw_segments = transcribe_res.get("segments", [])
-            confidence = float(transcribe_res.get("confidence", 0.85))
+            audio_duration_sec = float(transcribe_res.get("duration", 0.0) or 0.0)
+            confidence = float(transcribe_res.get("confidence", 0.0))
             full_text = transcribe_res.get("text", "") or " ".join(
                 s.get("text", "") for s in raw_segments if isinstance(s, dict)
             )
         else:
             raw_segments = []
+            audio_duration_sec = 0.0
             confidence = 0.0
             full_text = ""
 
+        rtf = round(processing_time_sec / audio_duration_sec, 3) if audio_duration_sec > 0 else None
+        # audio_quality_pct is intentionally NOT computed here: MOSEstimator
+        # already runs once inside save_conversation_with_analysis (stored as
+        # mos_metrics.mos_score) - recomputing it would mean decoding the
+        # whole audio file a second time for no new information. The UI
+        # derives the percentage from mos_metrics.mos_score directly.
+        quality_metrics = {
+            "processing_time_sec": processing_time_sec,
+            "rtf": rtf,
+            "filtered_segment_count": filtered_segment_count,
+            "domain_correction_count": domain_correction_count,
+        }
+
+        def _field(s: Any, name: str, default: Any = None) -> Any:
+            return s.get(name, default) if isinstance(s, dict) else getattr(s, name, default)
+
         segments = [
             SegmentInput(
-                start=float(
-                    getattr(s, "start", s.get("start", 0)) if not isinstance(s, dict) else s.get("start", 0)
-                ),
-                end=float(
-                    getattr(s, "end", s.get("end", 0)) if not isinstance(s, dict) else s.get("end", 0)
-                ),
-                text=str(
-                    getattr(s, "text", s.get("text", "")) if not isinstance(s, dict) else s.get("text", "")
-                ),
-                speaker=getattr(s, "speaker", s.get("speaker")) if not isinstance(s, dict) else s.get("speaker"),
+                start=float(_field(s, "start", 0)),
+                end=float(_field(s, "end", 0)),
+                text=str(_field(s, "text", "")),
+                speaker=_field(s, "speaker"),
                 segment_index=i,
+                avg_logprob=float(_field(s, "avg_logprob", -1.0)),
+                words=_field(s, "words"),
+                raw_text=str(_field(s, "raw_text", "") or ""),
             )
             for i, s in enumerate(raw_segments)
         ]
@@ -247,14 +307,44 @@ def _process_audio_upload_background(
             audio_path=file_path,
             uploaded_name=filename,
             asr_confidence=confidence,
-            quality_gate_passed=True,
+            # Gate fails when the decoder itself reports low confidence
+            # (confidence == 0.0 means "engine provided no data" - not a fail).
+            quality_gate_passed=confidence == 0.0 or confidence >= 0.45,
             agent_id=agent_id,
+            metadata={"quality_metrics": quality_metrics},
+            conversation_id=conversation_id,
         )
         logger.info(f"Successfully processed uploaded conversation for {filename}")
     except Exception as exc:
-        logger.error(f"Error processing uploaded audio {filename}: {exc}")
+        logger.exception(f"Error processing uploaded audio {filename}: {exc}")
+        # Mark the placeholder failed so the user sees WHY instead of a
+        # conversation that silently never appears.
+        if conversation_id:
+            try:
+                db.rollback()
+                row = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+                if row is not None:
+                    row.status = "failed"
+                    row.error_message = f"{type(exc).__name__}: {exc}"[:2000]
+                    db.commit()
+            except Exception:
+                logger.exception(f"Could not record failure status for {conversation_id}")
     finally:
         db.close()
+
+
+_ALLOWED_AUDIO_EXTENSIONS = {
+    ".wav",
+    ".mp3",
+    ".m4a",
+    ".aac",
+    ".ogg",
+    ".opus",
+    ".flac",
+    ".webm",
+    ".wma",
+    ".amr",
+}
 
 
 @router.post("/upload", status_code=202)
@@ -263,27 +353,80 @@ def upload_audio_file(
     request: Request,
     file: UploadFile = File(...),
     sector: str = Query("omni"),
+    db: Session = Depends(get_db),
     current_user: AuthUser = Depends(get_current_user),
 ):
-    """Upload an audio file (.wav, .mp3) for automated transcription, diarization, and NLP analysis."""
+    """Upload an audio file for automated transcription, diarization, and NLP analysis.
+
+    Returns 202 with the conversation_id of a placeholder record
+    (status="processing") that the background job fills in - poll
+    GET /conversations/{id} or the list endpoint for status transitions
+    (processing -> completed | failed).
+    """
+    filename = file.filename or "audio.wav"
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in _ALLOWED_AUDIO_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Desteklenmeyen dosya türü '{ext}'. Kabul edilenler: "
+            + ", ".join(sorted(_ALLOWED_AUDIO_EXTENSIONS)),
+        )
+
     TEMP_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-    safe_name = f"{new_uuid()}_{file.filename or 'audio.wav'}"
+    safe_name = f"{new_uuid()}_{filename}"
     dest_path = str(TEMP_AUDIO_DIR / safe_name)
 
-    with open(dest_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    # Chunked copy with a hard size cap: Content-Length can be absent or
+    # spoofed, so the only trustworthy limit is counting bytes as they land.
+    max_bytes = settings.max_upload_mb * 1024 * 1024
+    written = 0
+    try:
+        with open(dest_path, "wb") as buffer:
+            while True:
+                chunk = file.file.read(1024 * 1024)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > max_bytes:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"Dosya {settings.max_upload_mb}MB sınırını aşıyor.",
+                    )
+                buffer.write(chunk)
+    except HTTPException:
+        try:
+            os.unlink(dest_path)
+        except OSError:
+            pass
+        raise
+
+    # Placeholder row so the upload is visible (and its failure diagnosable)
+    # from the moment it's accepted - not only if/when processing succeeds.
+    placeholder = Conversation(
+        id=new_uuid(),
+        agent_id=current_user.username,
+        sector=sector,
+        audio_path=dest_path,
+        full_transcript="",
+        status="processing",
+        metadata_json={"uploaded_name": filename},
+    )
+    db.add(placeholder)
+    db.commit()
 
     enqueue(
         _process_audio_upload_background,
         dest_path,
-        file.filename or "audio.wav",
+        filename,
         sector,
         current_user.username,
+        placeholder.id,
     )
     return {
         "message": "Ses dosyası yüklendi ve transkripsiyon/diarization işlemi arka plana alındı.",
         "status": "processing",
-        "filename": file.filename,
+        "filename": filename,
+        "conversation_id": placeholder.id,
     }
 
 
@@ -326,23 +469,62 @@ def delete_conversation(conversation_id: str, db: Session = Depends(get_db)):
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
+    # No ON DELETE CASCADE is defined on the transcript_segments/keyword_hits
+    # foreign keys, so children must be removed explicitly in FK-safe order
+    # (keyword_hits before transcript_segments, both before the conversation
+    # itself) - otherwise this "right to be forgotten" delete fails outright
+    # against a FK-enforcing database (PostgreSQL in production; SQLite only
+    # masked this because it doesn't enforce FKs by default).
+    db.query(KeywordHit).filter(KeywordHit.conversation_id == conversation_id).delete(
+        synchronize_session=False
+    )
+    db.query(TranscriptSegmentRow).filter(
+        TranscriptSegmentRow.conversation_id == conversation_id
+    ).delete(synchronize_session=False)
     db.delete(conv)
     db.commit()
     return {"status": "success", "id": conversation_id}
 
 
+def _format_srt_timestamp(seconds: float) -> str:
+    total_ms = int(round(max(seconds, 0.0) * 1000))
+    hours, rem = divmod(total_ms, 3_600_000)
+    minutes, rem = divmod(rem, 60_000)
+    secs, ms = divmod(rem, 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{ms:03d}"
+
+
+def _speaker_display(speaker: str | None) -> str:
+    if not speaker:
+        return "Konuşmacı"
+    if "IVR" in speaker:
+        return "IVR"
+    return {"SPEAKER_00": "Temsilci", "SPEAKER_01": "Müşteri", "SPEAKER_02": "Uzman"}.get(
+        speaker, speaker
+    )
+
+
 @router.get("/{conversation_id}/export")
 def export_conversation(
     conversation_id: str,
+    format: str = Query("json", pattern="^(json|txt|srt)$"),
     db: Session = Depends(get_db),
     current_user: AuthUser = Depends(get_current_user),
 ):
-    """Export conversation data (GDPR Right to Data Portability)."""
+    """Export conversation data (GDPR Right to Data Portability).
+
+    format=json (default) returns the structured payload; format=txt returns
+    a human-readable speaker-labeled transcript; format=srt returns a
+    standard SubRip subtitle file (usable in any media player alongside the
+    original recording).
+    """
     q = db.query(Conversation).filter(Conversation.id == conversation_id)
     conv = scope_conversations(q, current_user, db).first()
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    _log_audit_view(db, current_user, "EXPORT", conversation_id)
+    # Action stays "EXPORT" (audit dashboards/queries filter on it); the
+    # concrete format goes into details.
+    _log_audit_view(db, current_user, "EXPORT", conversation_id, {"format": format})
 
     segments = (
         db.query(TranscriptSegmentRow)
@@ -350,6 +532,36 @@ def export_conversation(
         .order_by(TranscriptSegmentRow.start)
         .all()
     )
+
+    if format == "txt":
+        lines = [
+            f"# Görüşme {conv.id}",
+            f"# Tarih: {conv.created_at.isoformat() if conv.created_at else '-'}"
+            f" | Sektör: {conv.sector} | Süre: {conv.duration_sec:.0f}s",
+            "",
+        ]
+        for s in segments:
+            m, sec = divmod(int(s.start), 60)
+            lines.append(f"[{m:02d}:{sec:02d}] {_speaker_display(s.speaker)}: {s.text}")
+        return PlainTextResponse(
+            "\n".join(lines),
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="gorusme_{conv.id[:8]}.txt"'},
+        )
+
+    if format == "srt":
+        blocks = []
+        for i, s in enumerate(segments, start=1):
+            blocks.append(
+                f"{i}\n"
+                f"{_format_srt_timestamp(s.start)} --> {_format_srt_timestamp(s.end)}\n"
+                f"[{_speaker_display(s.speaker)}] {s.text}\n"
+            )
+        return PlainTextResponse(
+            "\n".join(blocks),
+            media_type="application/x-subrip; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="gorusme_{conv.id[:8]}.srt"'},
+        )
 
     return {
         "conversation": {
@@ -385,7 +597,10 @@ def reassign_segment_speaker(
     """
     seg = (
         db.query(TranscriptSegmentRow)
-        .filter(TranscriptSegmentRow.id == segment_id, TranscriptSegmentRow.conversation_id == conversation_id)
+        .filter(
+            TranscriptSegmentRow.id == segment_id,
+            TranscriptSegmentRow.conversation_id == conversation_id,
+        )
         .first()
     )
     if not seg:
@@ -398,16 +613,18 @@ def reassign_segment_speaker(
     if conv and conv.metadata_json and isinstance(conv.metadata_json, dict):
         meta = dict(conv.metadata_json)
         rlhf_logs = meta.get("rlhf_corrections", [])
-        rlhf_logs.append({
-            "segment_id": segment_id,
-            "old_speaker": old_speaker,
-            "new_speaker": body.new_speaker,
-            "corrected_by": current_user.username,
-            "reason": body.reason,
-        })
+        rlhf_logs.append(
+            {
+                "segment_id": segment_id,
+                "old_speaker": old_speaker,
+                "new_speaker": body.new_speaker,
+                "corrected_by": current_user.username,
+                "reason": body.reason,
+            }
+        )
         meta["rlhf_corrections"] = rlhf_logs
         conv.metadata_json = meta
-        
+
         # Update word level diarization if matching segment index
         w_diar = meta.get("word_level_diarization")
         if isinstance(w_diar, list):
