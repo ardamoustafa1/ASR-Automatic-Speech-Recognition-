@@ -201,15 +201,34 @@ docker-compose up -d
 
 ## Local Development
 
+Running natively (not in Docker) lets the ASR engine use real hardware
+acceleration - Apple Silicon Metal (MLX) on macOS, CUDA on Windows/Linux with
+an NVIDIA GPU. Docker containers are plain Linux, so they always fall back to
+CPU even on an Apple Silicon host.
+
 ```bash
-pip install -r requirements.txt
+python -m venv .venv
+# macOS/Linux:
+.venv/bin/pip install -r requirements.txt
+# Windows:
+.venv\Scripts\pip install -r requirements.txt
+
 npm install
 
-cp .env.example .env
+cp .env.example .env    # Windows: copy .env.example .env
+# set ASR_JWT_SECRET_KEY, ASR_ADMIN_PASSWORD - leave ASR_ENV unset/non-prod for local dev
 python -m asr_pro.db.seed
-
-make dev
 ```
+
+Start everything with one cross-platform command (works identically on
+macOS, Windows and Linux):
+
+```bash
+python scripts/dev.py                 # API (:8000) + frontend (:5173)
+python scripts/dev.py --with-lab      # + legacy Streamlit ASR Lab (:8501)
+```
+
+`make dev` is a POSIX-only equivalent (macOS/Linux) for those who prefer it.
 
 Useful commands:
 
