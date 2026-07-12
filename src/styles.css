@@ -536,16 +536,19 @@ html,
 }
 
 .transcript-box {
+  /* Intentionally NOT its own scroll container: .conv-detail (the panel
+     this sits inside) already scrolls the whole detail view. A second,
+     nested overflow:auto region here traps mouse-wheel/trackpad scroll
+     input once the pointer is over it - the visible symptom was users
+     scrolling the outer panel, landing on this box, and then being unable
+     to scroll any further because the gesture was being consumed by this
+     inner 520px box and its own faint 4px scrollbar instead. */
   background: transparent;
   border: none;
   padding: 0.5rem 0;
-  max-height: 520px;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
 }
 .transcript-box::-webkit-scrollbar {
   width: 4px;
