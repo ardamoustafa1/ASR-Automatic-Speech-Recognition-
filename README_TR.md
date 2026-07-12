@@ -142,6 +142,39 @@ flowchart LR
 
 ## Kurulum ve Çaliştirma
 
+### Ana Uygulama (React + FastAPI) - macOS ve Windows'ta Tek Komut
+
+Docker yerine yerel makinede çalıştırmak, ASR motorunun gerçek donanım
+hızlandırmasını kullanmasını sağlar: macOS'ta Apple Silicon Metal (MLX),
+Windows/Linux'ta NVIDIA GPU varsa CUDA. Docker container'ları sade Linux
+olduğu için, Apple Silicon bir host'ta bile her zaman CPU'ya düşer.
+
+```bash
+python -m venv .venv
+# macOS/Linux:
+.venv/bin/pip install -r requirements.txt
+# Windows:
+.venv\Scripts\pip install -r requirements.txt
+
+npm install
+cp .env.example .env    # Windows: copy .env.example .env
+# ASR_JWT_SECRET_KEY ve ASR_ADMIN_PASSWORD ayarlayın; yerel geliştirmede
+# ASR_ENV değişkenini "prod" YAPMAYIN (aksi halde login çerezi yalnızca
+# HTTPS üzerinden gönderilir ve http://localhost'ta giriş başarısız olur).
+python -m asr_pro.db.seed
+
+python scripts/dev.py                 # API (:8000) + arayüz (:5173)
+python scripts/dev.py --with-lab      # + eski Streamlit ASR Lab (:8501)
+```
+
+Bu tek komut hem macOS hem Windows'ta aynı şekilde çalışır; Ctrl+C ile
+tüm süreçleri temiz şekilde durdurur.
+
+### Eski Streamlit ASR Lab Aracı (yalnızca yerel deney için)
+
+Aşağıdaki bölüm, `tools/legacy_streamlit/ASR/` altındaki bağımsız
+Streamlit aracına özeldir; ana ürün yüzeyi değildir (bkz. [README.md](README.md)).
+
 ### 1) Ortam Hazirla
 
 ```bash
@@ -167,7 +200,7 @@ pip install -r requirements.txt
 ### 3) Uygulamayi Başlat
 
 ```bash
-streamlit run ASR/ASR.py
+streamlit run tools/legacy_streamlit/ASR/ASR.py
 ```
 
 ---
