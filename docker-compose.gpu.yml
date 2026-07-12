@@ -1,0 +1,46 @@
+# GPU override for production deployments:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# Prerequisites on the host:
+#   - NVIDIA driver + NVIDIA Container Toolkit (nvidia-ctk runtime configure)
+#
+# With a GPU, ASRService auto-selects device=cuda/compute_type=float16 and
+# faster-whisper decodes large-v3 at roughly RTF 0.05-0.10 - the throughput a
+# bank/operator contact center needs (hundreds of calls per GPU per hour).
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend.gpu
+    volumes:
+      - ./asr_pro:/app/asr_pro
+      - ./data:/app/data
+      # Persist downloaded model weights across container restarts.
+      - hf_cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend.gpu
+    volumes:
+      - ./asr_pro:/app/asr_pro
+      - ./data:/app/data
+      - ./temp_audio_uploads:/app/temp_audio_uploads
+      - hf_cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  hf_cache:
