@@ -59,6 +59,34 @@ docker-compose logs -f api
 
 ---
 
+## GPU Deployment (production ASR throughput)
+
+CPU decoding of Whisper large-v3 cannot keep up with contact-center call
+volume. On an NVIDIA GPU, faster-whisper decodes at roughly RTF 0.05–0.10
+(hundreds of calls per GPU per hour):
+
+```bash
+# Host prerequisites: NVIDIA driver + container toolkit
+#   sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker
+
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+```
+
+The override builds `Dockerfile.backend.gpu` (CUDA 12.4 + cuDNN) for the
+`api` and `worker` services and reserves one GPU each. `ASRService`
+auto-detects CUDA and switches to `float16`. Model weights are cached in the
+`hf_cache` volume so restarts don't re-download.
+
+Throughput dial: `ASR_ASR_MODEL_SIZE=large-v3` (default) or `large-v3-turbo`
+(measured faster AND more accurate on our clean benchmark - 0.31x RTF /
+1.64% WER vs 0.51x / 4.37% - but turbo produced a real hallucination on one
+noisy real call that large-v3 didn't; see `.benchmarks/results.md` before
+switching the production default). A fine-tuned in-domain model (see
+[WHISPER_FINETUNING.md](WHISPER_FINETUNING.md)) can be deployed via the same
+variable with a local CTranslate2 path.
+
+---
+
 ## Production Deployment (with Nginx + SSL)
 
 ### Option A: Docker Compose with Nginx Proxy
