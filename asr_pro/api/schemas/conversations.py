@@ -10,6 +10,13 @@ class SegmentOut(BaseModel):
     end: float
     text: str
     speaker: Optional[str] = None
+    # Whisper decoder confidence (-1.0 = not available). Lets the UI flag
+    # low-confidence lines for human review instead of silently trusting
+    # every transcribed word equally.
+    avg_logprob: float = -1.0
+    # Text before domain-vocabulary phonetic correction. Empty when
+    # correction made no change to this segment.
+    raw_text: str = ""
 
 
 class KeywordHitOut(BaseModel):
@@ -37,6 +44,9 @@ class ConversationOut(BaseModel):
     hit_count: int = 0
     topics: list[dict] = []
     metadata_json: dict | None = None
+    # Upload lifecycle: "processing" | "completed" | "failed"
+    status: str = "completed"
+    error_message: str | None = None
 
 
 class ConversationDetail(ConversationOut):
