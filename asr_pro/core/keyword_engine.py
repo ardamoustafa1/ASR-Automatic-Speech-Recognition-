@@ -49,6 +49,10 @@ class SegmentInput:
     words: Any = None
     is_interruption: bool = False
     auto_corrected: bool = False
+    # Text before DomainAdaptationService's phonetic correction, carried
+    # through diarization re-alignment for the compliance/QA audit trail.
+    # Empty when correction made no change (the common case).
+    raw_text: str = ""
 
 
 @dataclass(frozen=True)
