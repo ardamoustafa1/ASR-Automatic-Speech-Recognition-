@@ -1142,11 +1142,21 @@ def render_app():
         )
 
         is_mac_host = is_apple_silicon_host()
+        # MLX requires native macOS (Metal); it cannot run inside a Linux
+        # container even when the container is scheduled on Apple Silicon
+        # hardware (e.g. the dockerized asr_core service). Only offer the
+        # option where it can actually succeed, instead of letting a user
+        # pick "Çok Hızlı" and hit a dead-end RuntimeError after upload.
+        hardware_choices = ["Windows (Nvidia CUDA / Standart)"]
+        if is_mac_host:
+            hardware_choices.append("Mac (Apple Silicon MLX - Çok Hızlı)")
         hardware_engine = st.radio(
             "Altyapı",
-            ["Windows (Nvidia CUDA / Standart)", "Mac (Apple Silicon MLX - Çok Hızlı)"],
+            hardware_choices,
             index=1 if is_mac_host else 0,
-            help="Sistemi çalıştırdığınız bilgisayara göre motor seçin.",
+            help="Sistemi çalıştırdığınız bilgisayara göre motor seçin."
+            if is_mac_host
+            else "Bu ortam (container/Linux) MLX'i desteklemiyor; CUDA/CPU motoru kullanılacak.",
             label_visibility="collapsed",
         )
         st.session_state["hardware_engine"] = hardware_engine
