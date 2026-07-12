@@ -85,6 +85,46 @@ def test_domain_switching():
     assert "Umut Tacirliği" in health_v[0].category
 
 
+def test_banking_sector_alias_matches_finance_patterns():
+    """The upload UI (and DomainAdaptationService) use "banking" as the sector
+    value, but RED_FLAG_PATTERNS predates that and only has a "finance" key.
+    Without aliasing, a bank deployment silently matched zero domain-specific
+    red flags - only "general" ones. This locks in the fix."""
+    segments = [
+        SegmentInput(
+            start=0.0,
+            end=3.0,
+            text="Bu yatırım size kesin kazandırır merak etmeyin.",
+            segment_index=0,
+        )
+    ]
+    banking_v = analyze_compliance_risk(segments, domain_key="banking", use_ai=False)
+    finance_v = analyze_compliance_risk(segments, domain_key="finance", use_ai=False)
+
+    assert len(banking_v) == 1
+    assert banking_v[0].category == finance_v[0].category == "Yanıltıcı Yatırım Vaadi (SPK İhlali)"
+
+
+def test_omni_sector_maps_to_general_patterns():
+    segments = [
+        SegmentInput(
+            start=0.0, end=3.0, text="Hemen almazsanız yanarsınız, sen beni dinle.", segment_index=0
+        )
+    ]
+    violations = analyze_compliance_risk(segments, domain_key="omni", use_ai=False)
+    assert len(violations) == 1
+    assert "Agresif Satış" in violations[0].category
+
+
+def test_billing_sector_alias_matches_telecom_patterns():
+    segments = [
+        SegmentInput(start=0.0, end=3.0, text="Taahhüt bozamazsınız efendim.", segment_index=0)
+    ]
+    billing_v = analyze_compliance_risk(segments, domain_key="billing", use_ai=False)
+    assert len(billing_v) == 1
+    assert "Sözleşme/İptal Engelleme" in billing_v[0].category
+
+
 def test_ai_confidence_gate():
     segments = [
         SegmentInput(start=0.0, end=3.0, text="Bu hisse senedi kesin kazandırır.", segment_index=0)
