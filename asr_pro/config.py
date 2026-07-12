@@ -98,6 +98,12 @@ class Settings(BaseSettings):
     empathy_interruption_min_prior_segment_sec: float = 0.8
 
     # ─── ASR Quality Parameters ────────────────────────────────────────────────
+    # Whisper model checkpoint. Default "large-v3". "large-v3-turbo" measured
+    # faster AND more accurate on our clean benchmark (see
+    # .benchmarks/results.md) but produced a real hallucination on one noisy
+    # real call that large-v3 didn't - verify on your own real recordings
+    # (scripts/evaluate_wer.py) before changing this default in production.
+    asr_model_size: str = "large-v3"
     # Initial prompt fed to Whisper before each segment - primes the model with
     # domain vocabulary and formatting conventions for Turkish call-center audio.
     # An explicit Turkish prompt also steers the model away from language
@@ -120,6 +126,11 @@ class Settings(BaseSettings):
     asr_vad_min_silence_ms: int = 400
     # Padding (ms) added around detected speech boundaries.
     asr_vad_speech_pad_ms: int = 150
+    # Gap (seconds) under which adjacent VAD speech regions are merged into
+    # one decode region (MLX path). Wider = fewer regions = less fixed
+    # per-region decode overhead; the bridged silence is bounded by this
+    # value and covered by the hallucination guards.
+    asr_vad_region_merge_gap_sec: float = 3.0
     # Beam size for Whisper beam search (higher = more accurate but slower).
     asr_beam_size: int = 5
     # Temperature schedule for Whisper. Whisper retries with higher temperatures
@@ -162,10 +173,62 @@ class Settings(BaseSettings):
     # transcript UI.
     transcript_low_confidence_logprob: float = -1.1
 
+    # ─── Second-Pass Rescue Decoding ───────────────────────────────────────────
+    # After the initial decode, segments whose avg_logprob falls below the
+    # threshold are re-decoded in isolation (fresh acoustic window, preceding
+    # confident text injected as context prompt). The new hypothesis is only
+    # accepted when its avg_logprob beats the original by the margin - a
+    # principled "pick the higher-likelihood transcription" rule that can fix
+    # boundary-artifact misrecognitions without ever degrading a segment.
+    asr_second_pass_enabled: bool = True
+    asr_second_pass_logprob_threshold: float = -0.5
+    asr_second_pass_margin: float = 0.10
+    # Segments longer than this aren't rescued (full-window redecode of a long
+    # span is expensive and rarely a boundary artifact).
+    asr_second_pass_max_segment_sec: float = 15.0
+    # Hard cap on rescue decode attempts per channel, bounding worst-case
+    # added latency on badly degraded audio where many segments would
+    # otherwise qualify.
+    asr_second_pass_max_attempts: int = 8
+
     # ─── Biometric Voiceprints ─────────────────────────────────────────────────
     # Cosine similarity threshold above which a speaker is considered matched
     # to an enrolled agent voiceprint.
     biometric_match_threshold: float = 0.85
+
+    # ─── Upload Limits ─────────────────────────────────────────────────────────
+    # Maximum accepted audio upload size (MB). A 2-hour stereo 8kHz WAV is
+    # ~115MB; the default leaves headroom without letting a single request
+    # exhaust disk (uploads are written to TEMP_AUDIO_DIR before processing).
+    max_upload_mb: int = 300
+    # Model preload at API startup: pays the ~10s Whisper weight load once in
+    # a background thread instead of on the first customer upload.
+    asr_preload_model: bool = True
+
+    # ─── PII Redaction (KVKK / PCI-DSS) ───────────────────────────────────────
+    # When enabled, transcripts are scanned before persistence and validated
+    # personal identifiers are masked: TCKN (11-digit national ID, checksum
+    # verified), credit card PANs (Luhn verified), Turkish IBANs (mod-97
+    # verified) and mobile phone numbers. Banks and telecom operators must not
+    # store card numbers (PCI-DSS 3.4) or unnecessary national IDs (KVKK veri
+    # minimizasyonu) in call transcripts. Masking keeps the last 2-4 digits so
+    # QA reviewers can still cross-reference.
+    pii_redaction_enabled: bool = True
+
+    # ─── Toxicity / Abusive Language Detection ─────────────────────────────────
+    # Flags explicit profanity or aggressive insults from either party, for QA
+    # escalation. Deliberately curated to a narrow, unambiguous term list -
+    # see asr_pro/core/toxicity_engine.py's module docstring for why a wider
+    # generic Turkish "bad word" list is unsafe to ship (false-positives on
+    # ordinary business vocabulary like "hasta"/patient, "mal"/goods).
+    toxicity_detection_enabled: bool = True
+
+    # ─── CRM Auto-Note (Call Summary) ──────────────────────────────────────────
+    # Generates a structured intent/issue/action/resolution summary plus a
+    # short executive summary per call, via the same zero-shot classifier
+    # already loaded for sentiment/churn/compliance (no extra model, no
+    # external service required). Adds one more classifier pass per call.
+    crm_summary_enabled: bool = True
 
     # ─── Crosstalk Speech Separation ───────────────────────────────────────────
     # Whether to run SepFormer source separation + a second Whisper pass on
