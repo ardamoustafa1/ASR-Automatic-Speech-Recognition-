@@ -2,7 +2,7 @@ import os
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -27,6 +27,20 @@ limiter.enabled = False
 engine = create_engine(
     TEST_DB_URL, connect_args={"check_same_thread": False, "timeout": 15}, poolclass=StaticPool
 )
+
+
+# SQLite disables foreign key enforcement by default, unlike the PostgreSQL
+# used in production - a flush that inserts a child row before its FK parent
+# row would silently succeed here and only blow up in production. Enabling
+# this makes the test suite catch that whole bug class (see the fix for
+# save_conversation_with_analysis's keyword_hits/transcript_segments ordering).
+@event.listens_for(engine, "connect")
+def _enable_sqlite_fk(dbapi_connection, _connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
+
+
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Patch the background task SessionLocal so it doesn't open its own real DB connections
