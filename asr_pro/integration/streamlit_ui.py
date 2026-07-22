@@ -142,5 +142,5 @@ def render_keyword_results(hits: list[dict]):
             st.markdown(f"**{hit.get('rule_name', hit.get('keyword_name', 'Bilinmeyen'))}**")
             st.markdown(f"Bulunan: `{hit.get('matched_text', '')}`")
             st.caption(
-                f"Kural ID: {hit.get('rule_id', '')} | Güven: %{hit.get('confidence', 0)*100:.0f} | Seviye: {hit.get('severity', 'info').upper()}"
+                f"Kural ID: {hit.get('rule_id', '')} | Güven: %{hit.get('confidence', 0) * 100:.0f} | Seviye: {hit.get('severity', 'info').upper()}"
             )

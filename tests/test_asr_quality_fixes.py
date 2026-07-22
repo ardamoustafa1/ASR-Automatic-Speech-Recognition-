@@ -172,6 +172,23 @@ def test_phonetic_corrections_observed_errors():
     assert "havale" in DomainAdaptationService.correct_terms("havele yaptım")
 
 
+def test_red_tariff_misheard_forms_corrected():
+    # "Red" tariff mis-heard on real 8kHz calls as non-words. All must map to Red.
+    assert DomainAdaptationService.correct_terms("Redley'li kullanıyormuşuz") == (
+        "Red'li kullanıyormuşuz"
+    )
+    assert DomainAdaptationService.correct_terms("Redley 60 GB sınırsız") == "Red 60 GB sınırsız"
+    assert DomainAdaptationService.correct_terms("retli 60 gigabayt") == "Red'li 60 gigabayt"
+
+
+def test_red_correction_does_not_break_real_turkish_words():
+    # Guardrail: genuine words that merely resemble the mishears stay untouched.
+    assert (
+        DomainAdaptationService.correct_terms("Fatura tarifesi yüksek") == "Fatura tarifesi yüksek"
+    )
+    assert DomainAdaptationService.correct_terms("başvurusu reddedildi") == "başvurusu reddedildi"
+
+
 def test_correct_telecom_terms_alias_still_works():
     assert DomainAdaptationService.correct_telecom_terms("romin ücreti") == "roaming ücreti"
 

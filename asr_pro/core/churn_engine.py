@@ -158,9 +158,7 @@ def _own_company_names() -> set[str]:
     detection. Without this, an agent saying "Vodafone'dan arıyorum" on their
     own employer's outbound sales call would score as a competitor mention."""
     return {
-        name.strip().lower()
-        for name in settings.churn_own_company_names.split(",")
-        if name.strip()
+        name.strip().lower() for name in settings.churn_own_company_names.split(",") if name.strip()
     }
 
 
@@ -202,8 +200,14 @@ def _extract_competitors(text: str) -> set[str]:
 
 def _extract_price_signals(text: str) -> tuple[str, ...]:
     """Extract numeric currency and price objection points (e.g., 990 TL, 1050 TL, 840 TL)."""
-    matches = re.findall(r"\b(\d{2,4})\s*(?:TL|tl|Lira|lira|₺|bin|gigabyte|gb|paket)", text, re.IGNORECASE)
-    matches_raw = re.findall(r"\b(?:fiyatı|tutar|bedel|ödeme|istenen|gözüküyordu o\?|o|bu|fiyat)\s*(\d{2,4})\b", text, re.IGNORECASE)
+    matches = re.findall(
+        r"\b(\d{2,4})\s*(?:TL|tl|Lira|lira|₺|bin|gigabyte|gb|paket)", text, re.IGNORECASE
+    )
+    matches_raw = re.findall(
+        r"\b(?:fiyatı|tutar|bedel|ödeme|istenen|gözüküyordu o\?|o|bu|fiyat)\s*(\d{2,4})\b",
+        text,
+        re.IGNORECASE,
+    )
     all_prices = set()
     for m in matches + matches_raw:
         if int(m) >= 50 and int(m) <= 100000:
@@ -211,7 +215,20 @@ def _extract_price_signals(text: str) -> tuple[str, ...]:
     return tuple(sorted(all_prices, key=lambda x: int(x.split()[0]), reverse=True))
 
 
-FILLER_WORDS = {"ııı", "eee", "şey", "yani", "hani", "hmm", "ıı", "aaa", "mesela", "atıyorum", "falan", "filan"}
+FILLER_WORDS = {
+    "ııı",
+    "eee",
+    "şey",
+    "yani",
+    "hani",
+    "hmm",
+    "ıı",
+    "aaa",
+    "mesela",
+    "atıyorum",
+    "falan",
+    "filan",
+}
 
 
 def _calculate_filler_ratio(text: str) -> float:
@@ -331,9 +348,19 @@ def analyze_churn_risk(
         filler_ratio = _calculate_filler_ratio(text)
         total_filler_ratio += filler_ratio
 
-        if final_segment_risk >= 0.65 or (has_competitor and wpm > 130) or any(t in text_lower for t in ["iptal", "cayma", "fesh", "mahkeme", "hakem heyeti", "şikayet"]):
+        if (
+            final_segment_risk >= 0.65
+            or (has_competitor and wpm > 130)
+            or any(
+                t in text_lower
+                for t in ["iptal", "cayma", "fesh", "mahkeme", "hakem heyeti", "şikayet"]
+            )
+        ):
             chunk_state = "🔥 Kritik Tehdit"
-        elif final_segment_risk >= 0.40 or any(t in text_lower for t in ["pahalı", "zam", "yüksek gelmiş", "indirim", "uygun fiyat", "düşünüyorum"]):
+        elif final_segment_risk >= 0.40 or any(
+            t in text_lower
+            for t in ["pahalı", "zam", "yüksek gelmiş", "indirim", "uygun fiyat", "düşünüyorum"]
+        ):
             chunk_state = "⚠️ Fiyat/Kararsızlık"
         else:
             chunk_state = "🟢 Stabil"
@@ -347,10 +374,25 @@ def analyze_churn_risk(
             elif has_competitor:
                 severity = "🔥 Kritik Tehdit"
                 reason = f"Rakip Firma Alternatifi ve Geçiş Eğilimi ({', '.join(sorted(chunk_competitors)).title()})"
-            elif any(t in text_lower for t in ["iptal", "cayma", "fesh", "kapattır", "sonlandır", "mahkeme", "hakem heyeti", "şikayet"]):
+            elif any(
+                t in text_lower
+                for t in [
+                    "iptal",
+                    "cayma",
+                    "fesh",
+                    "kapattır",
+                    "sonlandır",
+                    "mahkeme",
+                    "hakem heyeti",
+                    "şikayet",
+                ]
+            ):
                 severity = "🔥 Kritik Tehdit"
                 reason = "Doğrudan İptal / Cayma Bedeli ve Yasal Şikayet Talebi"
-            elif any(t in text_lower for t in ["pahalı", "zam", "yüksek gelmiş", "indirim", "uygun fiyat"]):
+            elif any(
+                t in text_lower
+                for t in ["pahalı", "zam", "yüksek gelmiş", "indirim", "uygun fiyat"]
+            ):
                 severity = "⚠️ Yüksek Risk"
                 reason = "Fiyat / Zam İtirazı ve Kampanya Memnuniyetsizliği"
             else:
@@ -377,9 +419,7 @@ def analyze_churn_risk(
         chunk_weights.append(temporal_weight)
 
     if chunk_risks:
-        weighted_mean = sum(r * w for r, w in zip(chunk_risks, chunk_weights)) / sum(
-            chunk_weights
-        )
+        weighted_mean = sum(r * w for r, w in zip(chunk_risks, chunk_weights)) / sum(chunk_weights)
         model_signal = max(chunk_risks)
         final_risk = settings.churn_max_weight * model_signal + settings.churn_mean_weight * (
             weighted_mean
@@ -437,6 +477,12 @@ def analyze_churn_risk(
         trajectory=tuple(trajectory_states),
         was_deescalated=was_deescalated,
         agent_retention_score=round(agent_retention_score, 1),
-        detected_prices=tuple(sorted(all_prices_detected, key=lambda x: int(re.sub(r"\D", "", x)) if re.sub(r"\D", "", x).isdigit() else 0, reverse=True)),
+        detected_prices=tuple(
+            sorted(
+                all_prices_detected,
+                key=lambda x: int(re.sub(r"\D", "", x)) if re.sub(r"\D", "", x).isdigit() else 0,
+                reverse=True,
+            )
+        ),
         average_filler_ratio=avg_filler_ratio,
     )

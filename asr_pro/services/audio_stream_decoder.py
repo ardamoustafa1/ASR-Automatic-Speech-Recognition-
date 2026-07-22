@@ -32,7 +32,9 @@ class AudioStreamDecoder:
 
     def __init__(self) -> None:
         if not _FFMPEG_BIN:
-            raise AudioDecodeError("ffmpeg binary not found (imageio-ffmpeg missing and no system ffmpeg)")
+            raise AudioDecodeError(
+                "ffmpeg binary not found (imageio-ffmpeg missing and no system ffmpeg)"
+            )
         self._process: Optional[asyncio.subprocess.Process] = None
         self._stderr_task: Optional[asyncio.Task] = None
         self._closed = False
@@ -86,9 +88,7 @@ class AudioStreamDecoder:
         try:
             while True:
                 try:
-                    piece = await asyncio.wait_for(
-                        self._process.stdout.read(65536), timeout=0.05
-                    )
+                    piece = await asyncio.wait_for(self._process.stdout.read(65536), timeout=0.05)
                 except asyncio.TimeoutError:
                     break
                 if not piece:

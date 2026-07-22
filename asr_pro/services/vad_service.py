@@ -92,9 +92,7 @@ class VADService:
         if not audio_bytes or len(audio_bytes) < 100:
             return False
 
-        active_threshold = (
-            threshold if threshold is not None else self.parameters["threshold"]
-        )
+        active_threshold = threshold if threshold is not None else self.parameters["threshold"]
 
         # If Silero VAD is loaded and we have a valid PCM buffer, attempt neural VAD
         if self.loaded and self.model is not None and torch is not None:
@@ -102,8 +100,7 @@ class VADService:
                 import numpy as np
 
                 audio_array = (
-                    np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32)
-                    / 32768.0
+                    np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
                 )
                 if len(audio_array) >= 512:
                     tensor = torch.from_numpy(audio_array)

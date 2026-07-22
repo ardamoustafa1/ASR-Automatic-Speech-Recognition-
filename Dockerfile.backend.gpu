@@ -3,7 +3,14 @@
 # RTF 0.05-0.10 - an order of magnitude faster than CPU/MLX - which is what
 # high-volume bank/operator deployments need.
 # Requires the NVIDIA container toolkit on the host (nvidia-ctk runtime).
-FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+#
+# CUDA_TAG must be >=12.8.x for Blackwell (B100/B200/GB200, RTX 50-series,
+# compute capability 10.x/12.x) - the driver/toolkit compatibility floor for
+# that architecture, not merely a nice-to-have. Verify the exact tag exists
+# under https://hub.docker.com/r/nvidia/cuda/tags before deploying; pin the
+# full tag (not just the major.minor) once confirmed.
+ARG CUDA_TAG=12.8.1-cudnn-runtime-ubuntu22.04
+FROM nvidia/cuda:${CUDA_TAG}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.11 \
@@ -18,11 +25,19 @@ COPY requirements.txt .
 
 RUN python3.11 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+# Install torch from the CUDA 12.8 wheel index explicitly - PyPI's default
+# torch wheel is not guaranteed to be built against a Blackwell-capable CUDA
+# toolkit, only the official cuXXX index is. Installed before requirements.txt
+# so the general install sees the version constraint already satisfied and
+# does not silently replace this build with a PyPI default wheel.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu128
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY asr_pro/ asr_pro/
 COPY tools/ tools/
+COPY alembic/ alembic/
+COPY alembic.ini .
 
 EXPOSE 8000
 
-CMD ["uvicorn", "asr_pro.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn asr_pro.api.main:app --host 0.0.0.0 --port 8000"]

@@ -295,7 +295,7 @@ def save_conversation_with_analysis(
         for v in compliance_violations
     ]
 
-    # 6. Compute LLM Discourse Guard (FCR, CES, Adherence) & ITU-T P.863 MOS Quality
+    # 6. Compute LLM Discourse Guard (FCR, CES, Adherence) & heuristic MOS-scale audio quality
     from asr_pro.services.llm_discourse_guard import LLMDiscourseGuard
     from asr_pro.services.mos_estimator import MOSEstimator
 

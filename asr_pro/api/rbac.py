@@ -44,9 +44,12 @@ def scope_conversations(query: Query, current_user: User, db: Session) -> Query:
 
     if current_user.role == TEAM_LEAD:
         teammate_usernames = [
-            u.username for u in db.query(DBUser.username).filter(DBUser.team == current_user.team).all()
+            u.username
+            for u in db.query(DBUser.username).filter(DBUser.team == current_user.team).all()
         ]
-        return query.filter(Conversation.agent_id.in_(teammate_usernames or [current_user.username]))
+        return query.filter(
+            Conversation.agent_id.in_(teammate_usernames or [current_user.username])
+        )
 
     # Default (agent, or any unrecognized role): strictly own recordings only.
     return query.filter(Conversation.agent_id == current_user.username)

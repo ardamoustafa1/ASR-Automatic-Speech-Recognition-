@@ -164,7 +164,9 @@ def seed_defaults(db: Session) -> None:
             if os.getenv("ASR_ENV") == "prod":
                 raise RuntimeError(f"{env_var} must be set in production.")
             password = secrets.token_urlsafe(16)
-            logger.warning(f"{env_var} not set. Generated random password for '{username}': {password}")
+            logger.warning(
+                f"{env_var} not set. Generated random password for '{username}': {password}"
+            )
         db.add(
             User(
                 id=new_uuid(),

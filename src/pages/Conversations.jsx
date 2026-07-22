@@ -514,8 +514,20 @@ export default function ConversationsPage() {
                         selected.asr_confidence != null
                           ? `%${Math.round(selected.asr_confidence * 100)}`
                           : "—",
-                      hint: "Modelin metin güven skoru",
+                      hint: "Modelin kendi güven skoru (kelime hata oranı/WER değildir)",
                       color: "#10B981",
+                    },
+                    {
+                      label: "Kelime Hata Oranı (WER)",
+                      value:
+                        selected.metadata_json.quality_metrics.wer_percent != null
+                          ? `%${selected.metadata_json.quality_metrics.wer_percent}`
+                          : "—",
+                      hint:
+                        selected.metadata_json.quality_metrics.wer_percent != null
+                          ? "Referans metne göre ölçülen gerçek hata oranı"
+                          : "Bu çağrının doğru metni yok — ölçülemez · Benchmark (temiz set): %4.37",
+                      color: "#EF4444",
                     },
                     {
                       label: "Filtrelenen Segment",
@@ -1399,7 +1411,7 @@ export default function ConversationsPage() {
                         }}
                       >
                         <Volume2 size={14} color="#EC4899" />
-                        <span>ITU-T P.863 Ses Kalitesi (MOS)</span>
+                        <span>Akustik Ses Kalitesi (MOS Tahmini)</span>
                       </div>
                       <div
                         style={{

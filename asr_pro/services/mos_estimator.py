@@ -1,7 +1,16 @@
-"""ITU-T P.863 MOS (Mean Opinion Score) Quality Estimator & NOC Risk Reporter.
+"""Heuristic acoustic-quality estimator (MOS-scale proxy) & NOC risk reporter.
 
-Evaluates telephony acoustic quality by analyzing SNR, clipping rate, and signal dropout ratio
-to score voice calls from 1.0 (Bad) to 5.0 (HD Voice) and trigger infrastructure hazard warnings.
+Produces a Mean-Opinion-Score-*scale* number (1.0 Bad - 5.0 HD Voice) from
+three no-reference signal measurements: estimated SNR, clipping rate, and
+intra-speech dropout ratio. It flags likely line/infrastructure problems.
+
+IMPORTANT - this is NOT ITU-T P.863 (POLQA). Real P.863 is a proprietary,
+licensed, full-reference algorithm that requires the original clean signal to
+compare against; it cannot be reproduced from a call recording alone. This
+module is an independent single-ended (no-reference) heuristic that reports on
+the same 1-5 MOS scale for readability, and must never be represented to
+customers or in RFPs as P.863/POLQA-compliant. Report it as an internal
+acoustic-quality estimate.
 """
 
 from __future__ import annotations
@@ -15,13 +24,18 @@ logger = logging.getLogger("asr_pro.services.mos_estimator")
 
 
 class MOSEstimator:
-    """Acoustic quality estimator aligned with ITU-T P.863 standards."""
+    """No-reference heuristic acoustic-quality estimator (MOS-scale proxy).
+
+    Not ITU-T P.863/POLQA - see module docstring. Uses SNR + clipping +
+    intra-speech dropout to approximate perceived quality on the 1-5 scale.
+    """
 
     @staticmethod
     def estimate_mos(audio: np.ndarray | str, sample_rate: int = 16000) -> dict[str, Any]:
         """Compute MOS (1.0 to 5.0), SNR in dB, clipping rate, and NOC risk indicators."""
         if isinstance(audio, str):
             from faster_whisper import decode_audio
+
             audio = decode_audio(audio, sampling_rate=sample_rate)
 
         if not isinstance(audio, np.ndarray) or len(audio) == 0:
@@ -41,6 +55,16 @@ class MOSEstimator:
         clipping_rate_pct = float(clipping_samples / len(pcm) * 100.0)
 
         # 2. SNR (Signal-to-Noise Ratio in dB) & Dropout Rate (%)
+        #
+        # Real recorded telephony is dominated by DTX / silence-suppression:
+        # inter-turn pauses (and, on a split stereo channel, the entire time the
+        # other party talks) are encoded as near-DIGITAL-ZERO frames, not real
+        # background noise. Those frames are neither "signal" nor "noise" - they
+        # are suppressed silence, and letting them into the noise-floor estimate
+        # collapses noise_power toward zero and inflates SNR to a physically
+        # implausible 50-60 dB. Measured on real 8 kHz call recordings, ~15-27%
+        # of frames are digital-zero purely from DTX, so they must be excluded
+        # from every downstream statistic.
         frame_len = int(sample_rate * 0.020)  # 20ms frames
         if len(pcm) < frame_len:
             n_frames = 1
@@ -50,18 +74,56 @@ class MOSEstimator:
             frames = pcm[: n_frames * frame_len].reshape(n_frames, frame_len)
             frame_energies = np.mean(frames**2, axis=1)
 
-        # Sort energies: lowest 15% represents background noise floor, highest 50% speech
-        sorted_energies = np.sort(frame_energies)
-        noise_idx = max(1, int(n_frames * 0.15))
-        speech_idx = max(1, int(n_frames * 0.50))
+        # Digital-zero / DTX-suppressed frames: excluded from SNR and never
+        # treated as packet loss on their own.
+        DIGITAL_ZERO = 1e-7
+        active_mask = frame_energies >= DIGITAL_ZERO
+        active_energies = frame_energies[active_mask]
 
-        noise_power = np.mean(sorted_energies[:noise_idx]) + 1e-9
-        speech_power = np.mean(sorted_energies[speech_idx:]) + 1e-9
-        snr_db = float(10.0 * np.log10(speech_power / noise_power))
+        if active_energies.size >= 4:
+            # Noise floor = quietest real (non-suppressed) frames; speech = loud
+            # frames. Both measured only over frames that actually carry a signal.
+            sorted_active = np.sort(active_energies)
+            noise_idx = max(1, int(sorted_active.size * 0.15))
+            speech_idx = max(1, int(sorted_active.size * 0.50))
+            noise_power = float(np.mean(sorted_active[:noise_idx])) + 1e-9
+            speech_power = float(np.mean(sorted_active[speech_idx:])) + 1e-9
+            snr_db = float(10.0 * np.log10(speech_power / noise_power))
+        else:
+            noise_power = 1e-9
+            speech_power = float(np.mean(frame_energies)) + 1e-9
+            snr_db = 0.0
 
-        # Dropout (zero-energy frames representing packet loss or dropouts)
-        dropout_frames = np.sum(frame_energies < 1e-7)
-        dropout_rate_pct = float(dropout_frames / max(1, n_frames) * 100.0)
+        # Dropout / packet loss - deliberately conservative.
+        #
+        # Genuine packet loss is a BRIEF (sub-~200 ms) signal cut-out in the
+        # middle of otherwise-continuous speech. Multi-hundred-ms to multi-second
+        # near-zero stretches are ordinary conversational silence / DTX and are
+        # NOT packet loss - counting them (as the previous version did) falsely
+        # flagged ~9 of every 10 real calls as "infrastructure failures". So we
+        # only count near-zero RUNS shorter than the packet-loss ceiling, and
+        # only those flanked by speech on both sides (a true mid-speech gap).
+        MAX_PACKET_LOSS_FRAMES = int(0.2 / 0.020)  # 200 ms
+        near_zero = frame_energies < DIGITAL_ZERO
+        active_idx = np.flatnonzero(active_mask)
+        if active_idx.size >= 2:
+            first, last = int(active_idx[0]), int(active_idx[-1])
+            span_len = last - first + 1
+            dropout_frames = 0
+            run = 0
+            for j in range(first, last + 1):
+                if near_zero[j]:
+                    run += 1
+                else:
+                    if 0 < run <= MAX_PACKET_LOSS_FRAMES:
+                        dropout_frames += run  # short mid-speech gap = packet loss
+                    run = 0  # long runs are conversational silence -> ignored
+            dropout_rate_pct = float(dropout_frames / max(1, span_len) * 100.0)
+        else:
+            # No resolvable speech span (pure silence/noise): no meaningful
+            # intra-speech dropout to report - quality is driven by SNR instead.
+            dropout_frames = 0
+            dropout_rate_pct = 0.0
 
         # 3. Compute MOS (Mean Opinion Score) from 1.0 to 5.0
         mos = 4.8  # Max typical HD Voice MOS

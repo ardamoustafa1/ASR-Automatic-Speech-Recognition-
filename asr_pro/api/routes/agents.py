@@ -10,10 +10,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from asr_pro.api.deps import get_db
+from asr_pro.api.routes.auth import get_current_user, require_admin
 from asr_pro.services.biometric_service import BiometricService
 
 logger = logging.getLogger("asr_pro.api.routes.agents")
-router = APIRouter(prefix="/agents", tags=["agents"])
+router = APIRouter(prefix="/agents", tags=["agents"], dependencies=[Depends(get_current_user)])
 
 
 class VoiceprintResponse(BaseModel):
@@ -48,7 +49,11 @@ def list_voiceprints(db: Session = Depends(get_db)) -> list[VoiceprintResponse]:
     ]
 
 
-@router.post("/voiceprints/enroll", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/voiceprints/enroll",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin)],
+)
 async def enroll_agent_voiceprint(
     agent_code: str,
     agent_name: str,

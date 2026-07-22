@@ -185,7 +185,10 @@ def redact_segments(segments: list[Any]) -> dict[str, int]:
                 replace_kwargs = {"text": new_text}
                 if hasattr(seg, "raw_text"):
                     replace_kwargs["raw_text"] = new_raw_text
-                segments[idx] = dataclasses.replace(seg, **replace_kwargs)
+                # is_dataclass()'s TypeGuard narrows to DataclassInstance | type[DataclassInstance],
+                # but replace() only accepts an instance - seg is always an instance here
+                # (never a bare class), so this is a typeshed precision gap, not a real bug.
+                segments[idx] = dataclasses.replace(seg, **replace_kwargs)  # type: ignore[type-var]
             else:
                 try:
                     seg.text = new_text
@@ -196,5 +199,5 @@ def redact_segments(segments: list[Any]) -> dict[str, int]:
                         replace_kwargs = {"text": new_text}
                         if hasattr(seg, "raw_text"):
                             replace_kwargs["raw_text"] = new_raw_text
-                        segments[idx] = dataclasses.replace(seg, **replace_kwargs)
+                        segments[idx] = dataclasses.replace(seg, **replace_kwargs)  # type: ignore[type-var]
     return totals

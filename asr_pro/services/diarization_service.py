@@ -357,7 +357,7 @@ class DiarizationService:
             if len(left_ch) > 0 and len(right_ch) > 0:
                 import numpy as np
 
-                turns: list[SpeakerTurn] = []
+                turns = []  # list[SpeakerTurn]; already inferred from the pyannote branch above
                 # 250ms windows give better granularity than 500ms for
                 # detecting turn switches in rapid conversational exchanges.
                 window_size = int(0.25 * sr)
@@ -498,8 +498,11 @@ class DiarizationService:
         turns = diarization_result.turns
         diarization_method = diarization_result.method
 
-        aligned_segments: list[SegmentInput] = []
-        speakers_present = set()
+        aligned_segments = []  # list[SegmentInput]; already inferred from the branch above
+        # Named distinctly from the `speakers_present` list above (different branch, mutated
+        # via .add() here vs. a static sorted list there) - mypy treats same-name reuse across
+        # branches as one variable and flags list<->set as a genuine type conflict otherwise.
+        speakers_present_set = set()
 
         if turns:
             # Acoustic alignment: find the speaker turn with the highest overlap
@@ -577,7 +580,7 @@ class DiarizationService:
                 if not best_speaker:
                     best_speaker = turns[0].speaker if turns else "SPEAKER_00"
 
-                speakers_present.add(best_speaker)
+                speakers_present_set.add(best_speaker)
                 aligned_segments.append(
                     SegmentInput(
                         start=seg.start,
@@ -652,7 +655,7 @@ class DiarizationService:
                 for seg_idx in group:
                     seg = segments[seg_idx]
                     seg_spk = seg.speaker or spk
-                    speakers_present.add(seg_spk)
+                    speakers_present_set.add(seg_spk)
                     aligned_segments.append(
                         SegmentInput(
                             start=seg.start,
@@ -667,7 +670,7 @@ class DiarizationService:
                     )
 
         aligned_segments = self._deduplicate_assigned_segments(aligned_segments)
-        agent_id, customer_id = self._identify_roles(aligned_segments, sorted(speakers_present))
+        agent_id, customer_id = self._identify_roles(aligned_segments, sorted(speakers_present_set))
         from asr_pro.core.semantic_role_guard import enforce_semantic_role_guard
 
         aligned_segments = enforce_semantic_role_guard(aligned_segments, agent_id, customer_id)
@@ -745,7 +748,10 @@ class DiarizationService:
                     for seg in segments
                     if seg.speaker and max(seg.start, region_start) < min(seg.end, region_end)
                 ]
-                speakers = sorted({seg.speaker for seg in active})
+                # `active` is already filtered to seg.speaker-truthy segments above, but
+                # mypy can't carry that narrowing across the separate list - restate the
+                # filter here so speakers is inferred as list[str], not list[str | None].
+                speakers = sorted({seg.speaker for seg in active if seg.speaker})
                 if len(speakers) < 2:
                     continue
                 duration = region_end - region_start

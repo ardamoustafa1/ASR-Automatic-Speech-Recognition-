@@ -56,6 +56,13 @@ CUSTOMER_STRONG_PHRASES = [
 ]
 
 
+def _get_field(seg: Any, name: str, default: Any = None) -> Any:
+    """Read `name` from a segment that may be a dataclass, namedtuple, dict, or plain object."""
+    if isinstance(seg, dict):
+        return seg.get(name, default)
+    return getattr(seg, name, default)
+
+
 def enforce_semantic_role_guard(
     segments: list[Any], agent_id: str | None, customer_id: str | None
 ) -> list[Any]:
@@ -70,9 +77,9 @@ def enforce_semantic_role_guard(
     refined = []
 
     for idx, seg in enumerate(segments):
-        text = getattr(seg, "text", "") or ""
+        text = _get_field(seg, "text", "") or ""
         text_lower = text.lower().strip()
-        current_spk = getattr(seg, "speaker", None)
+        current_spk = _get_field(seg, "speaker", None)
 
         # 1. Semantic role auto-correction
         new_spk = current_spk
@@ -97,9 +104,9 @@ def enforce_semantic_role_guard(
         is_interrupted = False
         if idx > 0:
             prev_seg = refined[idx - 1]
-            prev_spk = getattr(prev_seg, "speaker", None)
-            prev_end = float(getattr(prev_seg, "end", 0))
-            cur_start = float(getattr(seg, "start", 0))
+            prev_spk = _get_field(prev_seg, "speaker", None)
+            prev_end = float(_get_field(prev_seg, "end", 0))
+            cur_start = float(_get_field(seg, "start", 0))
             if prev_spk and new_spk and prev_spk != new_spk and cur_start < (prev_end - 0.20):
                 is_interrupted = True
                 interruption_count += 1
@@ -114,7 +121,9 @@ def enforce_semantic_role_guard(
                     replace_kwargs["auto_corrected"] = auto_corrected
                 if hasattr(seg, "is_interruption"):
                     replace_kwargs["is_interruption"] = is_interrupted
-                seg = dataclasses.replace(seg, **replace_kwargs)
+                # is_dataclass()'s TypeGuard narrows to DataclassInstance |
+                # type[DataclassInstance]; seg is always an instance here.
+                seg = dataclasses.replace(seg, **replace_kwargs)  # type: ignore[type-var]
             except Exception as exc:
                 logger.debug(f"SemanticGuard dataclass replace failed: {exc}")
         elif hasattr(seg, "_replace"):

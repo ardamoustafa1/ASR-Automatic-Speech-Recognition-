@@ -36,9 +36,9 @@ def get_correction_count() -> int:
 
 # Initial prompt boosting string to prime Whisper decoder attention on telecom entities
 TELECOM_INITIAL_PROMPT = (
-    "Vodafone Türkiye, Türk Telekom, Turkcell, VoLTE, eSIM, cayma bedeli, fiber altyapı, "
-    "APN ayarları, taahhüt, tarife, sınırsız internet, faturamatik, faturam, hat taşıma, "
-    "kontör, megabayt, gigabayt, roaming, yurtdışı kampanya, taahhütnamem, "
+    "Vodafone Türkiye, Türk Telekom, Turkcell, Red tarifesi, VoLTE, eSIM, cayma bedeli, "
+    "fiber altyapı, APN ayarları, taahhüt, tarife, sınırsız internet, faturamatik, faturam, "
+    "hat taşıma, kontör, megabayt, gigabayt, roaming, yurtdışı kampanya, taahhütnamem, "
     "müşteri temsilcisi, borç sorgulama."
 )
 
@@ -89,6 +89,12 @@ TELECOM_PHONETIC_CORRECTIONS = [
     # sequences are Turkish words, so the rewrite is safe cross-sector.
     (r"\b(redle|retle|retl)(\d+)\b", r"Red'le \2"),
     (r"\b(redle|retle|retl)\b", "Red'le"),
+    # Same "Red" tariff mis-heard with the "-li" suffix ("Red'li kullanıyorsunuz")
+    # as the non-words "redley'li"/"redleyli"/"retli" - observed on real 8kHz
+    # calls ("Redley'li kullanıyormuşuz", "retli 60 GB"). Not Turkish words.
+    (r"\b(redley'?li|redleyli|retli)\b", "Red'li"),
+    # Bare "Red" product name mis-heard as "redley" ("Redley 60 GB sınırsız").
+    (r"\bredley\b", "Red"),
 ]
 
 BANKING_PHONETIC_CORRECTIONS = [
@@ -160,7 +166,9 @@ class DomainAdaptationService:
                     try:
                         # Replace in place if possible in list
                         idx = segments.index(seg)
-                        segments[idx] = dataclasses.replace(seg, text=new_text)
+                        # is_dataclass()'s TypeGuard narrows to DataclassInstance |
+                        # type[DataclassInstance]; seg is always an instance here.
+                        segments[idx] = dataclasses.replace(seg, text=new_text)  # type: ignore[type-var]
                     except Exception:
                         pass
                 elif hasattr(seg, "_replace"):

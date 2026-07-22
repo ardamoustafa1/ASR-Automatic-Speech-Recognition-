@@ -95,7 +95,7 @@ class BiometricService:
         if not isinstance(audio, np.ndarray):
             return np.array([], dtype=np.float32)
         pcm = audio.flatten().astype(np.float32)
-        if np.max(np.abs(pcm)) > 0:
+        if pcm.size and np.max(np.abs(pcm)) > 0:
             pcm = pcm / np.max(np.abs(pcm))
         return pcm
 

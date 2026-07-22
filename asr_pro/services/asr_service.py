@@ -122,12 +122,68 @@ class ASRService:
         except Exception:
             return False
 
+    @staticmethod
+    def _gpu_compute_capability() -> tuple[int, int]:
+        """Return (major, minor) CUDA compute capability of device 0, or (0, 0) if unavailable."""
+        try:
+            import torch
+
+            return torch.cuda.get_device_capability(0)
+        except Exception:
+            return (0, 0)
+
     def _choose_compute_type(self) -> str:
         if self._device == "cuda":
-            return "float16"
+            return self._choose_cuda_compute_type()
         if self._device == "mps":
             return "float16"
         return "int8"
+
+    def _choose_cuda_compute_type(self) -> str:
+        """Select the initial CTranslate2 compute type for the detected GPU generation.
+
+        Blackwell (compute capability 10.x on B100/B200/GB200, 12.x on
+        RTX 50-series) has no CTranslate2 quantization kernel confirmed as
+        supported by this project as of this writing - CTranslate2 only ships
+        prebuilt kernels for the CUDA compute capabilities its own release
+        targeted, and whether a given deployment's installed ctranslate2
+        build has Blackwell kernels depends entirely on which version is
+        installed. Hardcoding an unverified "Blackwell fast path" here would
+        be a false claim, not an engineering decision.
+
+        Instead: detect and log the compute capability for observability,
+        return the best generally-supported type, and let load_model()'s
+        fallback chain (see _compute_type_fallback_chain) actually discover
+        at load time whether a faster type (e.g. int8_float16) works on this
+        specific GPU + installed CTranslate2 build - degrading automatically
+        instead of crashing if it doesn't.
+        """
+        major, minor = self._gpu_compute_capability()
+        if major >= 10:
+            logger.info(
+                f"ASRService: GPU compute capability {major}.{minor} detected "
+                "(Blackwell-class or newer). No Blackwell-specific CTranslate2 quantization "
+                "kernel is confirmed available in this deployment; will attempt float16 first "
+                "and probe faster compute types via automatic fallback in load_model()."
+            )
+        return "float16"
+
+    def _compute_type_fallback_chain(self) -> list[str]:
+        """Ordered compute types to attempt when loading the model on CUDA.
+
+        Tries the selected type first, then progressively more conservative
+        alternatives - so an unsupported compute_type/architecture
+        combination in the installed CTranslate2 build (e.g. a new GPU
+        generation released after that build) degrades to a working
+        configuration instead of raising.
+        """
+        if self._device != "cuda":
+            return [self._compute_type]
+        chain = [self._compute_type]
+        for candidate in ("float16", "int8_float16", "int8"):
+            if candidate not in chain:
+                chain.append(candidate)
+        return chain
 
     def load_model(self, model_size: str | None = None) -> "WhisperModel | None":
         model_size = model_size or getattr(settings, "asr_model_size", None) or "large-v3"
@@ -163,17 +219,35 @@ class ASRService:
         cpu_threads = max(4, os.cpu_count() or 4)
         num_workers = 1 if self._device == "cuda" else min(4, max(1, cpu_threads // 2))
 
-        logger.info(f"Loading ASR model '{model_size}' on {self._device} ({self._compute_type})")
-        self._model = WhisperModel(
-            model_size,
-            device=self._device,
-            compute_type=self._compute_type,
-            cpu_threads=cpu_threads,
-            num_workers=num_workers,
-        )
-        self._model_size = model_size
-        logger.info(f"ASR model '{model_size}' loaded successfully.")
-        return self._model
+        last_exc: Exception | None = None
+        for compute_type in self._compute_type_fallback_chain():
+            logger.info(f"Loading ASR model '{model_size}' on {self._device} ({compute_type})")
+            try:
+                self._model = WhisperModel(
+                    model_size,
+                    device=self._device,
+                    compute_type=compute_type,
+                    cpu_threads=cpu_threads,
+                    num_workers=num_workers,
+                )
+            except Exception as exc:
+                last_exc = exc
+                logger.warning(
+                    f"ASRService: compute_type={compute_type!r} failed to load on "
+                    f"{self._device} ({exc}); trying next fallback compute type."
+                )
+                continue
+            self._compute_type = compute_type
+            self._model_size = model_size
+            logger.info(
+                f"ASR model '{model_size}' loaded successfully with compute_type={compute_type}."
+            )
+            return self._model
+
+        raise RuntimeError(
+            f"Could not load ASR model '{model_size}' on {self._device} with any compute type "
+            f"({self._compute_type_fallback_chain()}). Last error: {last_exc}"
+        ) from last_exc
 
     def ensure_model_loaded(self) -> None:
         """Pull model weights into memory now, so the first customer upload

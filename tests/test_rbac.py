@@ -60,7 +60,9 @@ def test_qa_and_auditor_have_full_visibility(client, db_session):
         resp = client.get("/api/v1/conversations", headers=_auth(token))
         ids = {c["id"] for c in resp.json()}
         assert conv_id in ids
-        assert client.get(f"/api/v1/conversations/{conv_id}", headers=_auth(token)).status_code == 200
+        assert (
+            client.get(f"/api/v1/conversations/{conv_id}", headers=_auth(token)).status_code == 200
+        )
 
 
 def test_delete_conversation_is_admin_only(client, db_session):
@@ -115,15 +117,11 @@ def test_conversation_view_and_export_create_audit_entries(client, db_session):
     )
 
     admin_token = _login(client, "admin")
-    resp = client.get(
-        "/api/v1/audit-logs?username=agent&action=VIEW", headers=_auth(admin_token)
-    )
+    resp = client.get("/api/v1/audit-logs?username=agent&action=VIEW", headers=_auth(admin_token))
     assert resp.status_code == 200
     entries = resp.json()
     assert any(conv_id in (e["target_resource"] or "") for e in entries)
 
-    resp = client.get(
-        "/api/v1/audit-logs?username=agent&action=EXPORT", headers=_auth(admin_token)
-    )
+    resp = client.get("/api/v1/audit-logs?username=agent&action=EXPORT", headers=_auth(admin_token))
     entries = resp.json()
     assert any(conv_id in (e["target_resource"] or "") for e in entries)

@@ -1,5 +1,6 @@
 import asyncio
 import os
+import shutil
 import subprocess
 
 from playwright.async_api import async_playwright
@@ -11,11 +12,11 @@ async def main():
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        
+
         # 1. Take React Screenshots
-        context = await browser.new_context(viewport={'width': 1280, 'height': 800})
+        context = await browser.new_context(viewport={"width": 1280, "height": 800})
         page = await context.new_page()
-        
+
         print("Taking Dashboard screenshot...")
         await page.goto("http://localhost:5173/")
         await page.wait_for_timeout(2000)
@@ -29,14 +30,15 @@ async def main():
         # Record a short video for Live ASR
         print("Recording Live ASR demo...")
         video_context = await browser.new_context(
-            record_video_dir="docs/assets/",
-            record_video_size={"width": 1280, "height": 800}
+            record_video_dir="docs/assets/", record_video_size={"width": 1280, "height": 800}
         )
         video_page = await video_context.new_page()
         await video_page.goto("http://localhost:5173/live")
         await video_page.wait_for_timeout(2000)
         # Type something to show interaction
-        await video_page.evaluate("document.body.innerHTML += '<div style=\"position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--accent); padding: 20px; border-radius: 12px; font-size: 24px; color: white; z-index: 9999;\">🎙️ Canlı Dinleme Aktif...<br><br><small>Test Ses Verisi İşleniyor...</small></div>'")
+        await video_page.evaluate(
+            "document.body.innerHTML += '<div style=\"position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--accent); padding: 20px; border-radius: 12px; font-size: 24px; color: white; z-index: 9999;\">🎙️ Canlı Dinleme Aktif...<br><br><small>Test Ses Verisi İşleniyor...</small></div>'"
+        )
         await video_page.wait_for_timeout(3000)
         await video_context.close()  # Saves the video
 
@@ -45,14 +47,25 @@ async def main():
             if file.endswith(".webm"):
                 os.rename(f"docs/assets/{file}", "docs/assets/demo.webm")
                 break
-                
+
         # Use ffmpeg to convert to gif
         print("Converting WebM to GIF...")
-        subprocess.run(["ffmpeg", "-y", "-i", "docs/assets/demo.webm", "-vf", "fps=10,scale=800:-1:flags=lanczos", "docs/assets/demo.gif"], capture_output=True)
+        subprocess.run(
+            [
+                shutil.which("ffmpeg") or "ffmpeg",
+                "-y",
+                "-i",
+                "docs/assets/demo.webm",
+                "-vf",
+                "fps=10,scale=800:-1:flags=lanczos",
+                "docs/assets/demo.gif",
+            ],
+            capture_output=True,
+        )
 
         # 2. Take Streamlit Screenshot
         print("Taking Streamlit screenshot...")
-        context_st = await browser.new_context(viewport={'width': 1280, 'height': 800})
+        context_st = await browser.new_context(viewport={"width": 1280, "height": 800})
         page_st = await context_st.new_page()
         await page_st.goto("http://localhost:8501")
         await page_st.wait_for_timeout(3000)
@@ -116,22 +129,23 @@ graph TD
         """
         with open("mermaid.html", "w") as f:
             f.write(mermaid_html)
-            
+
         page_arch = await context.new_page()
         await page_arch.goto(f"file://{os.path.abspath('mermaid.html')}")
         await page_arch.wait_for_timeout(3000)
-        
+
         # Take screenshot of the diagram element specifically to crop correctly
-        element_handle = await page_arch.query_selector('.mermaid')
+        element_handle = await page_arch.query_selector(".mermaid")
         if element_handle:
             await element_handle.screenshot(path="docs/assets/architecture.png")
         else:
             await page_arch.screenshot(path="docs/assets/architecture.png")
-            
+
         os.remove("mermaid.html")
 
         await browser.close()
         print("All visual assets generated successfully!")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

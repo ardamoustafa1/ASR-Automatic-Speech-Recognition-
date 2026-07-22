@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -27,6 +28,18 @@ from asr_pro.services.speech_separation_service import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _reset_separator_singleton():
+    """The lazy singleton's state is class-level and must not leak across tests."""
+    original_instance = _SepformerSeparator._instance
+    original_attempted = _SepformerSeparator._load_attempted
+    _SepformerSeparator._instance = None
+    _SepformerSeparator._load_attempted = False
+    yield
+    _SepformerSeparator._instance = original_instance
+    _SepformerSeparator._load_attempted = original_attempted
+
+
 def test_separate_two_speakers_empty_audio_returns_none():
     assert separate_two_speakers(np.array([], dtype=np.float32)) is None
 
@@ -35,6 +48,82 @@ def test_separate_two_speakers_rejects_wrong_sample_rate():
     audio = np.zeros(8000, dtype=np.float32)
     with pytest.raises(ValueError, match="16000Hz"):
         separate_two_speakers(audio, sample_rate=8000)
+
+
+def test_separator_get_skips_loading_under_test_mode():
+    assert _SepformerSeparator.get() is None
+    # Second call must not re-attempt the load - the attempt flag latches.
+    with patch("asr_pro.services.speech_separation_service._is_testing", False):
+        assert _SepformerSeparator.get() is None
+
+
+def test_separator_get_caches_instance_across_calls():
+    sentinel = object()
+    _SepformerSeparator._instance = sentinel
+    _SepformerSeparator._load_attempted = True
+    assert _SepformerSeparator.get() is sentinel
+
+
+def test_separator_get_loads_model_successfully_outside_test_mode():
+    mock_model = MagicMock()
+    with (
+        patch("asr_pro.services.speech_separation_service._is_testing", False),
+        patch("torch.cuda.is_available", return_value=False),
+        patch(
+            "speechbrain.inference.separation.SepformerSeparation.from_hparams",
+            return_value=mock_model,
+        ),
+    ):
+        result = _SepformerSeparator.get()
+    assert result is mock_model
+
+
+def test_separator_get_returns_none_when_model_load_fails():
+    with (
+        patch("asr_pro.services.speech_separation_service._is_testing", False),
+        patch("torch.cuda.is_available", return_value=False),
+        patch(
+            "speechbrain.inference.separation.SepformerSeparation.from_hparams",
+            side_effect=RuntimeError("network unreachable"),
+        ),
+    ):
+        result = _SepformerSeparator.get()
+    assert result is None
+
+
+def test_separate_two_speakers_returns_none_when_model_unavailable():
+    audio = np.zeros(1600, dtype=np.float32)
+    with patch.object(_SepformerSeparator, "get", return_value=None):
+        assert separate_two_speakers(audio) is None
+
+
+def test_separate_two_speakers_returns_streams_on_success():
+    audio = np.random.rand(1600).astype(np.float32)
+    mock_model = MagicMock()
+
+    # Simulate SepFormer's (1, time, n_sources) output tensor using numpy,
+    # since the real return type only needs to support the same slicing +
+    # .detach().cpu().numpy() chain the production code calls.
+    import torch as real_torch
+
+    fake_estimated = real_torch.zeros((1, len(audio), 2))
+    mock_model.separate_batch.return_value = fake_estimated
+
+    with patch.object(_SepformerSeparator, "get", return_value=mock_model):
+        streams = separate_two_speakers(audio)
+
+    assert streams is not None
+    assert len(streams) == 2
+    assert all(isinstance(s, np.ndarray) for s in streams)
+
+
+def test_separate_two_speakers_returns_none_on_inference_failure():
+    audio = np.random.rand(1600).astype(np.float32)
+    mock_model = MagicMock()
+    mock_model.separate_batch.side_effect = RuntimeError("inference blew up")
+
+    with patch.object(_SepformerSeparator, "get", return_value=mock_model):
+        assert separate_two_speakers(audio) is None
 
 
 @pytest.mark.skipif(not MODEL_AVAILABLE, reason="HuggingFace model required")

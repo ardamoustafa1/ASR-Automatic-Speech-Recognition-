@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from asr_pro.api.deps import get_db, limiter
-from asr_pro.api.routes.auth import require_admin
+from asr_pro.api.routes.auth import get_current_user, require_admin
 from asr_pro.api.schemas.keywords import (
     KeywordRuleCreate,
     KeywordRuleOut,
@@ -15,7 +15,9 @@ from asr_pro.api.schemas.keywords import (
 from asr_pro.core.keyword_engine import RuleInput, evaluate_rule_on_text, hits_to_dict
 from asr_pro.db.models import KeywordRule, Topic, new_uuid
 
-router = APIRouter(prefix="/keyword-rules", tags=["keywords"])
+router = APIRouter(
+    prefix="/keyword-rules", tags=["keywords"], dependencies=[Depends(get_current_user)]
+)
 
 
 @router.get("", response_model=list[KeywordRuleOut])
@@ -101,7 +103,9 @@ def test_keyword(request: Request, payload: KeywordTestRequest, db: Session = De
     return KeywordTestResponse(hits=hits_to_dict(hits))
 
 
-topics_router = APIRouter(prefix="/topics", tags=["topics"])
+topics_router = APIRouter(
+    prefix="/topics", tags=["topics"], dependencies=[Depends(get_current_user)]
+)
 
 
 @topics_router.get("", response_model=list[TopicOut])

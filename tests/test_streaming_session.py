@@ -39,7 +39,7 @@ def _silence(sec: float) -> np.ndarray:
 
 def _tone(sec: float) -> np.ndarray:
     # Non-zero content so the energy-fallback path (no VAD model loaded) treats it as speech.
-    return (np.ones(int(sec * SAMPLE_RATE), dtype=np.float32) * 0.5)
+    return np.ones(int(sec * SAMPLE_RATE), dtype=np.float32) * 0.5
 
 
 def _make_session() -> StreamingASRSession:
@@ -83,7 +83,9 @@ async def test_ongoing_speech_yields_partial_not_final():
     )
 
     with patch.object(streaming_session_module.VADService, "get_instance", return_value=mock_vad):
-        with patch.object(streaming_session_module.ASRService, "get_instance", return_value=mock_asr):
+        with patch.object(
+            streaming_session_module.ASRService, "get_instance", return_value=mock_asr
+        ):
             session.decoder.pending.append(_tone(buffer_sec))
             msg = await session.push_audio(b"chunk")
 
@@ -111,7 +113,9 @@ async def test_trailing_silence_triggers_final_commit():
     )
 
     with patch.object(streaming_session_module.VADService, "get_instance", return_value=mock_vad):
-        with patch.object(streaming_session_module.ASRService, "get_instance", return_value=mock_asr):
+        with patch.object(
+            streaming_session_module.ASRService, "get_instance", return_value=mock_asr
+        ):
             session.decoder.pending.append(_tone(buffer_sec))
             msg = await session.push_audio(b"chunk")
 
@@ -145,7 +149,9 @@ async def test_max_pending_forces_commit_even_without_silence():
             buffer_sec,
         )
 
-        with patch.object(streaming_session_module.VADService, "get_instance", return_value=mock_vad):
+        with patch.object(
+            streaming_session_module.VADService, "get_instance", return_value=mock_vad
+        ):
             with patch.object(
                 streaming_session_module.ASRService, "get_instance", return_value=mock_asr
             ):

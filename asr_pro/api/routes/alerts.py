@@ -5,12 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from asr_pro.api.deps import get_db, limiter
-from asr_pro.api.routes.auth import require_admin
+from asr_pro.api.routes.auth import get_current_user, require_admin
 from asr_pro.api.schemas.alerts import AlertEventOut, AlertRuleCreate, AlertRuleOut
 from asr_pro.core.alert_engine import evaluate_alerts
 from asr_pro.db.models import AlertEvent, AlertRule, new_uuid
 
-router = APIRouter(prefix="/alerts", tags=["alerts"])
+router = APIRouter(prefix="/alerts", tags=["alerts"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("/rules", response_model=list[AlertRuleOut])

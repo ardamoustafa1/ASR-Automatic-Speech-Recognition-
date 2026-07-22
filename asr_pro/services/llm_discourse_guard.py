@@ -218,7 +218,9 @@ class LLMDiscourseGuard:
 
                     if dataclasses.is_dataclass(seg):
                         try:
-                            segments[i] = dataclasses.replace(
+                            # is_dataclass()'s TypeGuard narrows to DataclassInstance |
+                            # type[DataclassInstance]; seg is always an instance here.
+                            segments[i] = dataclasses.replace(  # type: ignore[type-var]
                                 seg, speaker=alternate_spk, auto_corrected=True
                             )
                             corrected_count += 1

@@ -3,10 +3,18 @@
 #
 # Prerequisites on the host:
 #   - NVIDIA driver + NVIDIA Container Toolkit (nvidia-ctk runtime configure)
+#   - For Blackwell GPUs (B100/B200/GB200, RTX 50-series): NVIDIA driver
+#     >=570.x (CUDA 12.8 support) - Dockerfile.backend.gpu's CUDA_TAG build
+#     arg must also be >=12.8.x, see the comment there.
 #
-# With a GPU, ASRService auto-selects device=cuda/compute_type=float16 and
-# faster-whisper decodes large-v3 at roughly RTF 0.05-0.10 - the throughput a
-# bank/operator contact center needs (hundreds of calls per GPU per hour).
+# With a GPU, ASRService auto-selects device=cuda and probes CTranslate2
+# compute types (float16 -> int8_float16 -> int8) at model-load time via
+# _compute_type_fallback_chain(), logging which one actually loaded -
+# faster-whisper decodes large-v3 at roughly RTF 0.05-0.10 on float16, the
+# throughput a bank/operator contact center needs (hundreds of calls per GPU
+# per hour). On Blackwell, no compute type here is confirmed as using
+# architecture-specific kernels - check the loaded model's log line and your
+# installed ctranslate2 release notes to know what's actually running.
 services:
   api:
     build:

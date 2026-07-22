@@ -74,7 +74,9 @@ class LiveCoachingService:
         for phrase in ESCALATION_PHRASES:
             if phrase in text_lower and f"esc_{phrase}" not in state["alerts_emitted"]:
                 state["alerts_emitted"].add(f"esc_{phrase}")
-                logger.info(f"LiveCoaching [{session_id}]: Triggered escalation coaching for '{phrase}'")
+                logger.info(
+                    f"LiveCoaching [{session_id}]: Triggered escalation coaching for '{phrase}'"
+                )
                 return {
                     "id": str(uuid.uuid4()),
                     "type": "escalation",
@@ -106,7 +108,11 @@ class LiveCoachingService:
             state["has_kvkk"] = True
 
         # 4. If elapsed > 15s and no greeting or KVKK yet, trigger compliance reminder
-        if session_elapsed > 15.0 and not state["has_kvkk"] and "kvkk_remind" not in state["alerts_emitted"]:
+        if (
+            session_elapsed > 15.0
+            and not state["has_kvkk"]
+            and "kvkk_remind" not in state["alerts_emitted"]
+        ):
             state["alerts_emitted"].add("kvkk_remind")
             logger.info(f"LiveCoaching [{session_id}]: Triggered KVKK reminder.")
             return {

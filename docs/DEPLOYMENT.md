@@ -72,10 +72,25 @@ volume. On an NVIDIA GPU, faster-whisper decodes at roughly RTF 0.05–0.10
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 ```
 
-The override builds `Dockerfile.backend.gpu` (CUDA 12.4 + cuDNN) for the
-`api` and `worker` services and reserves one GPU each. `ASRService`
-auto-detects CUDA and switches to `float16`. Model weights are cached in the
-`hf_cache` volume so restarts don't re-download.
+The override builds `Dockerfile.backend.gpu` (CUDA 12.8 + cuDNN, required for
+Blackwell — B100/B200/GB200, RTX 50-series — see the `CUDA_TAG` build arg
+comment in that file) for the `api` and `worker` services and reserves one
+GPU each. `ASRService` auto-detects CUDA, logs the GPU's compute capability,
+and probes CTranslate2 compute types at model-load time
+(`float16` → `int8_float16` → `int8`), falling back automatically if the
+installed CTranslate2 build lacks a kernel for a given compute
+type/architecture combination — check the "ASR model loaded successfully
+with compute_type=..." log line to see what's actually running.
+
+**Blackwell note:** no CTranslate2 compute type here is confirmed to use
+architecture-specific fast-path kernels on Blackwell as of this writing —
+the fallback chain above exists specifically so an unsupported combination
+degrades to a working configuration instead of crashing, not because a
+Blackwell-optimized kernel is guaranteed to be selected. If you're deploying
+on Blackwell, check your installed `ctranslate2` version's release notes for
+GPU architecture support and confirm which compute type actually loaded via
+the log line above. Model weights are cached in the `hf_cache` volume so
+restarts don't re-download.
 
 Throughput dial: `ASR_ASR_MODEL_SIZE=large-v3` (default) or `large-v3-turbo`
 (measured faster AND more accurate on our clean benchmark - 0.31x RTF /

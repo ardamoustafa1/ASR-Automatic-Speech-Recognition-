@@ -154,7 +154,11 @@ async def websocket_asr_endpoint(websocket: WebSocket):
             except Exception as exc:
                 logger.warning(f"WS transcription chunk error: {exc}")
                 await websocket.send_json(
-                    {"type": "warning", "status": "warning", "message": f"Chunk transcription failed: {exc}"}
+                    {
+                        "type": "warning",
+                        "status": "warning",
+                        "message": f"Chunk transcription failed: {exc}",
+                    }
                 )
                 continue
 
@@ -168,6 +172,7 @@ async def websocket_asr_endpoint(websocket: WebSocket):
 
             if message["type"] in ("partial", "final"):
                 from asr_pro.services.live_coaching_service import LiveCoachingService
+
                 chunk_text = message.get("text", "") or message.get("transcript_so_far", "")
                 alert = LiveCoachingService.evaluate_chunk(
                     session_id=conversation_id,

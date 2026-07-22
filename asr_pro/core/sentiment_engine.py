@@ -85,7 +85,9 @@ class SentimentClassifier:
           when the Turkish BERT model is unavailable or for churn/topic labeling.
         """
         if self._pipeline is None:
-            logger.info("Loading Turkish sentiment model (savasy/bert-base-turkish-sentiment-cased)...")
+            logger.info(
+                "Loading Turkish sentiment model (savasy/bert-base-turkish-sentiment-cased)..."
+            )
             try:
                 from transformers import pipeline as hf_pipeline
 
@@ -192,11 +194,11 @@ class SentimentClassifier:
                 neu = score_map_bert.get("neutral", 0.0)
                 # Distribute negative probability across stress emotions
                 mapped_scores = [
-                    neg * 0.45,   # angry
-                    neg * 0.35,   # frustrated
-                    pos,          # satisfied
-                    neg * 0.20,   # anxious
-                    neu,          # neutral
+                    neg * 0.45,  # angry
+                    neg * 0.35,  # frustrated
+                    pos,  # satisfied
+                    neg * 0.20,  # anxious
+                    neu,  # neutral
                 ]
                 # Normalize
                 total = sum(mapped_scores) or 1.0

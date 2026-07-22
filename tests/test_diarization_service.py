@@ -2,8 +2,11 @@ from __future__ import annotations
 
 """Unit tests for DiarizationService and Agent/Customer role identification."""
 
+from unittest.mock import MagicMock, patch
+
 from asr_pro.config import settings
 from asr_pro.core.keyword_engine import SegmentInput
+from asr_pro.services import diarization_service as diarization_module
 from asr_pro.services.diarization_service import DiarizationService
 
 
@@ -182,3 +185,159 @@ def test_finetuned_segmentation_swap_warns_on_missing_checkpoint(tmp_path, caplo
         service._maybe_swap_finetuned_segmentation()  # must not raise, just warn
     finally:
         settings.diarization_finetuned_segmentation_path = original
+
+
+def test_choose_device_returns_cpu_under_test_mode():
+    service = DiarizationService.__new__(DiarizationService)
+    assert service._choose_device() == "cpu"
+
+
+def test_choose_device_detects_mps_on_apple_silicon():
+    service = DiarizationService.__new__(DiarizationService)
+    with (
+        patch.object(diarization_module, "_is_testing", False),
+        patch("platform.system", return_value="Darwin"),
+        patch("platform.machine", return_value="arm64"),
+        patch("torch.backends.mps.is_available", return_value=True),
+    ):
+        assert service._choose_device() == "mps"
+
+
+def test_choose_device_detects_cuda_when_not_apple_silicon():
+    service = DiarizationService.__new__(DiarizationService)
+    with (
+        patch.object(diarization_module, "_is_testing", False),
+        patch("platform.system", return_value="Linux"),
+        patch("torch.cuda.is_available", return_value=True),
+    ):
+        assert service._choose_device() == "cuda"
+
+
+def test_choose_device_falls_back_to_cpu_when_no_accelerator():
+    service = DiarizationService.__new__(DiarizationService)
+    with (
+        patch.object(diarization_module, "_is_testing", False),
+        patch("platform.system", return_value="Linux"),
+        patch("torch.cuda.is_available", return_value=False),
+    ):
+        assert service._choose_device() == "cpu"
+
+
+def test_choose_device_falls_back_to_cpu_on_torch_import_error():
+    service = DiarizationService.__new__(DiarizationService)
+    with (
+        patch.object(diarization_module, "_is_testing", False),
+        patch("platform.system", side_effect=RuntimeError("no platform info")),
+    ):
+        assert service._choose_device() == "cpu"
+
+
+def test_load_pipeline_returns_cached_pipeline():
+    service = DiarizationService.__new__(DiarizationService)
+    sentinel = object()
+    service._pipeline = sentinel
+    assert service.load_pipeline() is sentinel
+
+
+def test_load_pipeline_skips_loading_under_test_mode():
+    service = DiarizationService.__new__(DiarizationService)
+    service._pipeline = None
+    assert service.load_pipeline() is None
+
+
+def test_load_pipeline_returns_none_when_pyannote_not_installed():
+    service = DiarizationService.__new__(DiarizationService)
+    service._pipeline = None
+    with (
+        patch.object(diarization_module, "_is_testing", False),
+        patch.object(diarization_module, "Pipeline", None),
+    ):
+        assert service.load_pipeline() is None
+
+
+def test_load_pipeline_returns_none_when_no_hf_token():
+    service = DiarizationService.__new__(DiarizationService)
+    service._pipeline = None
+    with (
+        patch.object(diarization_module, "_is_testing", False),
+        patch.object(settings, "hf_token", ""),
+        patch.dict("os.environ", {}, clear=True),
+    ):
+        assert service.load_pipeline() is None
+
+
+def test_load_pipeline_loads_successfully_and_moves_to_device():
+    service = DiarizationService.__new__(DiarizationService)
+    service._pipeline = None
+    service._device_str = "cuda"
+    mock_pipeline = MagicMock()
+
+    with (
+        patch.object(diarization_module, "_is_testing", False),
+        patch.object(settings, "hf_token", "fake-token"),
+        patch.object(diarization_module.Pipeline, "from_pretrained", return_value=mock_pipeline),
+        patch.object(service, "_maybe_swap_finetuned_segmentation"),
+    ):
+        result = service.load_pipeline()
+
+    assert result is mock_pipeline
+    mock_pipeline.to.assert_called_once()
+
+
+def test_load_pipeline_retries_with_use_auth_token_on_type_error():
+    service = DiarizationService.__new__(DiarizationService)
+    service._pipeline = None
+    service._device_str = "cpu"
+    mock_pipeline = MagicMock()
+
+    with (
+        patch.object(diarization_module, "_is_testing", False),
+        patch.object(settings, "hf_token", "fake-token"),
+        patch.object(
+            diarization_module.Pipeline,
+            "from_pretrained",
+            side_effect=[TypeError("token kwarg not supported"), mock_pipeline],
+        ),
+        patch.object(service, "_maybe_swap_finetuned_segmentation"),
+    ):
+        result = service.load_pipeline()
+
+    assert result is mock_pipeline
+
+
+def test_load_pipeline_returns_none_on_load_failure():
+    service = DiarizationService.__new__(DiarizationService)
+    service._pipeline = None
+    service._device_str = "cpu"
+
+    with (
+        patch.object(diarization_module, "_is_testing", False),
+        patch.object(settings, "hf_token", "fake-token"),
+        patch.object(
+            diarization_module.Pipeline,
+            "from_pretrained",
+            side_effect=RuntimeError("download failed"),
+        ),
+    ):
+        result = service.load_pipeline()
+
+    assert result is None
+    assert service._pipeline is None
+
+
+def test_load_pipeline_warns_but_continues_when_device_move_fails():
+    service = DiarizationService.__new__(DiarizationService)
+    service._pipeline = None
+    service._device_str = "mps"
+    mock_pipeline = MagicMock()
+    mock_pipeline.to.side_effect = RuntimeError("device move failed")
+
+    with (
+        patch.object(diarization_module, "_is_testing", False),
+        patch.object(settings, "hf_token", "fake-token"),
+        patch.object(diarization_module.Pipeline, "from_pretrained", return_value=mock_pipeline),
+        patch.object(service, "_maybe_swap_finetuned_segmentation"),
+    ):
+        result = service.load_pipeline()
+
+    assert result is mock_pipeline

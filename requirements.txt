@@ -1,10 +1,23 @@
 # ─── ASR Core ───────────────────────────────────────────────────────────────
 streamlit>=1.35.0,<2.0
 faster-whisper>=1.0.1
+# CTranslate2's compute-type kernel support for a given GPU architecture is
+# tied to the specific release installed, not just this floor - Blackwell
+# (compute capability 10.x/12.x) support is NOT confirmed at this floor
+# version. ASRService._compute_type_fallback_chain() probes and degrades
+# automatically at model-load time if the installed build lacks a kernel for
+# the requested compute_type/architecture combination, so an unsupported
+# combination here degrades gracefully instead of crashing - but if you're
+# deploying on Blackwell, verify your installed ctranslate2 release notes
+# for GPU architecture support before assuming this floor is sufficient.
 ctranslate2>=3.24.0
 mlx-whisper; platform_system == "Darwin" and platform_machine == "arm64"
 transformers>=4.40.0
-torch>=2.2.0,<3.0.0
+# >=2.7.0 for official cu128 (Blackwell-capable) wheel availability. On GPU
+# deployments, Dockerfile.backend.gpu installs torch explicitly from the
+# cu128 index BEFORE this file - do not rely on this line alone to get a
+# Blackwell-capable build via plain PyPI.
+torch>=2.7.0,<3.0.0
 pyannote.audio>=4.0.4,<5.0.0
 pyannote.metrics>=3.2.1
 speechbrain>=1.0.0

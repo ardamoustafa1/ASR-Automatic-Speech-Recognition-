@@ -55,9 +55,7 @@ def test_websocket_partial_then_final_flow(mock_session_cls, client):
             {
                 "type": "final",
                 "text": "merhaba dünya",
-                "segments": [
-                    {"start": 0.0, "end": 1.2, "text": "merhaba dünya", "speaker": None}
-                ],
+                "segments": [{"start": 0.0, "end": 1.2, "text": "merhaba dünya", "speaker": None}],
                 "transcript_so_far": "merhaba dünya",
             },
         ]

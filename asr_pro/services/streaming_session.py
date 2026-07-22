@@ -68,7 +68,11 @@ class StreamingASRSession:
 
         vad = VADService.get_instance()
         vad_available = bool(vad.loaded)
-        speech_ts = vad.filter_speech_timestamps(self.pcm_buffer, sampling_rate=SAMPLE_RATE) if vad_available else []
+        speech_ts = (
+            vad.filter_speech_timestamps(self.pcm_buffer, sampling_rate=SAMPLE_RATE)
+            if vad_available
+            else []
+        )
 
         buffer_duration = self._buffer_duration_sec()
         forced = buffer_duration >= STREAMING_MAX_PENDING_SEC
@@ -116,7 +120,9 @@ class StreamingASRSession:
         if not is_final:
             return {"type": "partial", "text": text, "segments": out_segments}
 
-        commit_sample = last_speech_end_sample if last_speech_end_sample > 0 else len(self.pcm_buffer)
+        commit_sample = (
+            last_speech_end_sample if last_speech_end_sample > 0 else len(self.pcm_buffer)
+        )
         commit_sample = min(commit_sample, len(self.pcm_buffer))
         self.pcm_buffer = self.pcm_buffer[commit_sample:]
         self.committed_offset_sec += commit_sample / SAMPLE_RATE

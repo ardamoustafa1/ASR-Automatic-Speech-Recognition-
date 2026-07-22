@@ -106,7 +106,7 @@ def test_live_coaching_alerts():
 
 
 def test_mos_estimator():
-    """Test ITU-T P.863 MOS calculation."""
+    """Test the heuristic MOS-scale acoustic-quality estimator (not ITU-T P.863)."""
     # Synthetic clean speech simulation (high SNR, no clipping)
     t = np.linspace(0, 2.0, 32000, endpoint=False)
     clean_audio = np.zeros(32000, dtype=np.float32)
@@ -125,6 +125,61 @@ def test_mos_estimator():
     assert mos_clipped["clipping_rate_pct"] > 90.0
     assert mos_clipped["mos_score"] < 3.5
     assert mos_clipped["noc_alert"] is not None
+
+
+def _tone(sec, sr, freq=200, amp=0.4, noise=0.005):
+    t = np.linspace(0, sec, int(sr * sec), endpoint=False)
+    return (amp * np.sin(2 * np.pi * freq * t) + np.random.normal(0, noise, t.size)).astype(
+        np.float32
+    )
+
+
+def test_mos_does_not_penalize_normal_call_silence():
+    """Regression (real 8 kHz telephony): DTX/silence-suppressed conversational
+    gaps - digital-zero dead air before/after speech and multi-second inter-turn
+    pauses - must NOT be scored as packet loss. Previously this produced a false
+    MOS ~2.3 and a bogus 'infrastructure risk' NOC alarm on ~9 of 10 real calls.
+    """
+    sr = 16000
+    quiet_pause = np.random.normal(0, 0.003, sr * 3).astype(np.float32)  # comfort-noise pause
+    call = np.concatenate(
+        [
+            np.zeros(sr * 2, dtype=np.float32),  # leading digital-zero (DTX)
+            _tone(4, sr),  # speech
+            quiet_pause,  # natural inter-turn pause (non-zero)
+            np.zeros(int(sr * 1.5), dtype=np.float32),  # a long mid-call DTX gap
+            _tone(4, sr),  # speech
+            np.zeros(sr * 2, dtype=np.float32),  # trailing digital-zero (DTX)
+        ]
+    )
+
+    result = MOSEstimator.estimate_mos(call)
+
+    # The 1.5s DTX gap is too long to be packet loss -> not counted.
+    assert result["dropout_rate_pct"] < 2.0
+    assert result["mos_score"] >= 3.5
+    assert result["noc_alert"] is None
+    # SNR must be physically plausible (not the old ~55dB DTX-inflated value).
+    assert result["snr_db"] < 50.0
+
+
+def test_mos_detects_real_mid_speech_packet_loss():
+    """Genuine packet loss = several BRIEF (<200 ms) signal cut-outs inside
+    otherwise-continuous speech. These must still be caught and penalized.
+    """
+    sr = 16000
+    speech = _tone(8, sr)
+    # Punch in six 150 ms digital-zero gaps within the speech (real packet loss).
+    for start_sec in (1.0, 2.2, 3.4, 4.6, 5.8, 7.0):
+        s = int(start_sec * sr)
+        speech[s : s + int(0.15 * sr)] = 0.0
+    call = np.concatenate([np.zeros(sr, dtype=np.float32), speech, np.zeros(sr, dtype=np.float32)])
+
+    result = MOSEstimator.estimate_mos(call)
+
+    assert result["dropout_rate_pct"] > 5.0
+    assert result["mos_score"] < 4.5
+    assert result["noc_alert"] is not None
 
 
 def test_tier6_sota_diarization_upgrades():

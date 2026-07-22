@@ -1,7 +1,11 @@
 # API routes for uploading audio recordings and retrieving analysis results.
-from __future__ import annotations
-
 """API route: conversations — list, detail, and analysis endpoints."""
+
+# isort and ruff's isort emulation disagree on how to order the two `User`
+# aliases below (asr_pro.api.routes.auth vs asr_pro.db.models) - isort's
+# verdict wins since it's the tool this repo's CI actually runs to check
+# import order; ruff's redundant I001 check is suppressed for this block.
+from __future__ import annotations  # noqa: I001
 
 import os
 from typing import Any
@@ -40,9 +44,11 @@ from asr_pro.db.models import (
     KeywordHit,
     Topic,
     TranscriptSegmentRow,
-    new_uuid,
 )
 from asr_pro.db.models import User as DBUser
+from asr_pro.db.models import (
+    new_uuid,
+)
 from asr_pro.db.session import SessionLocal
 from asr_pro.services.asr_service import ASRService
 from asr_pro.services.conversation_service import (

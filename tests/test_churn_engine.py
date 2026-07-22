@@ -98,8 +98,7 @@ def test_risk_score_is_length_invariant():
 
     # A single low-key "normal conversation" chunk should never be high risk.
     neutral_segments = [
-        SegmentInput(start=i * 5, end=(i + 1) * 5, text=neutral, segment_index=i)
-        for i in range(5)
+        SegmentInput(start=i * 5, end=(i + 1) * 5, text=neutral, segment_index=i) for i in range(5)
     ]
     neutral_result = analyze_churn_risk(neutral_segments)
     assert neutral_result.is_high_risk is False
@@ -130,12 +129,39 @@ def test_zero_false_positive_agent_and_neutral_speech():
     """Verify that agent explanations and neutral customer sentences never trigger false positive churn alarms."""
     # These exact sentences caused false positive alarms before Layer 1 & 2 guards:
     false_positive_segs = [
-        SegmentInput(0, 4, "İyiyim, teşekkürler. Ben de iyiyim, teşekkür ederim. Tüzeye tarifeleriniz için aramıştım.", 0),
-        SegmentInput(5, 9, "Şu an mevcut tarife 50 GB sosyal paket sırası kullanıyoruz. Tarifelerimizin sağ olsun fiyatı 1050 TL.", 1),
-        SegmentInput(10, 14, "Ayrıca hangi şey var mı? Gigabyte'ı. 840. Bir paket daha vardı normalde.", 2),
-        SegmentInput(15, 19, "Uygulamadan yatabiliyor muyum? Bu 840'ı 840'dan mı yapabiliyorsunuz? Yok. Sizler oradan tekrar.", 3),
-        SegmentInput(20, 24, "Aranmışsınız, işaretlisiniz. Bugün de son günü olduğu için mağaza danışmanlarımıza dikmişler.", 4),
-        SegmentInput(25, 29, "Ay sonu olduğu için tekrardan arattık aranıyorsunuz mağaza danışmanlarım olarak.", 5),
+        SegmentInput(
+            0,
+            4,
+            "İyiyim, teşekkürler. Ben de iyiyim, teşekkür ederim. Tüzeye tarifeleriniz için aramıştım.",
+            0,
+        ),
+        SegmentInput(
+            5,
+            9,
+            "Şu an mevcut tarife 50 GB sosyal paket sırası kullanıyoruz. Tarifelerimizin sağ olsun fiyatı 1050 TL.",
+            1,
+        ),
+        SegmentInput(
+            10, 14, "Ayrıca hangi şey var mı? Gigabyte'ı. 840. Bir paket daha vardı normalde.", 2
+        ),
+        SegmentInput(
+            15,
+            19,
+            "Uygulamadan yatabiliyor muyum? Bu 840'ı 840'dan mı yapabiliyorsunuz? Yok. Sizler oradan tekrar.",
+            3,
+        ),
+        SegmentInput(
+            20,
+            24,
+            "Aranmışsınız, işaretlisiniz. Bugün de son günü olduğu için mağaza danışmanlarımıza dikmişler.",
+            4,
+        ),
+        SegmentInput(
+            25,
+            29,
+            "Ay sonu olduğu için tekrardan arattık aranıyorsunuz mağaza danışmanlarım olarak.",
+            5,
+        ),
     ]
 
     result = analyze_churn_risk(false_positive_segs)
@@ -150,7 +176,12 @@ def test_zero_false_positive_agent_and_neutral_speech():
 def test_enterprise_competitor_and_root_cause_diagnostics():
     """Verify that true threats get correctly flagged with severity badges and root cause diagnosis."""
     true_threat_segs = [
-        SegmentInput(0, 5, "950 TL mi gözüküyordu o? Rakip A1, S&S her şey için ötesi var. O 990 TL bu sana. Ben bir düşünüyorum.", 0)
+        SegmentInput(
+            0,
+            5,
+            "950 TL mi gözüküyordu o? Rakip A1, S&S her şey için ötesi var. O 990 TL bu sana. Ben bir düşünüyorum.",
+            0,
+        )
     ]
 
     result = analyze_churn_risk(true_threat_segs)

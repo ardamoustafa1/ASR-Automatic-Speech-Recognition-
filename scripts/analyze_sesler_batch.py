@@ -138,8 +138,10 @@ def main():
     done = _already_processed(output_path)
     pending = [f for f in files if f.name not in done]
 
-    print(f"[analyze_sesler_batch] {len(files)} total files, {len(done)} already done, "
-          f"{len(pending)} to process.")
+    print(
+        f"[analyze_sesler_batch] {len(files)} total files, {len(done)} already done, "
+        f"{len(pending)} to process."
+    )
 
     with open(output_path, "a", encoding="utf-8") as out:
         for idx, audio_path in enumerate(pending, 1):

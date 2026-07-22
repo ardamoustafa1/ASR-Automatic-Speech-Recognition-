@@ -56,7 +56,9 @@ def test_websocket_latency_and_reconnect(mock_session_cls, mock_validate, client
 
 @patch("asr_pro.api.routes.websocket._validate_token")
 @patch("asr_pro.api.routes.websocket.StreamingASRSession")
-def test_websocket_connection_limit_returns_1013(mock_session_cls, mock_validate, client, monkeypatch):
+def test_websocket_connection_limit_returns_1013(
+    mock_session_cls, mock_validate, client, monkeypatch
+):
     import asr_pro.api.routes.websocket as ws_module
 
     monkeypatch.setattr(ws_module, "MAX_WS_CONNECTIONS", 1)
